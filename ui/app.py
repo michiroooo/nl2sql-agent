@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -9,7 +10,12 @@ import streamlit as st
 
 sys.path.append(str(Path(__file__).parent.parent / "function"))
 
-from agent import NL2SQLAgent
+use_react = os.getenv("MCP_ENABLED", "false").lower() == "true"
+
+if use_react:
+    from agent_react import NL2SQLAgent
+else:
+    from agent import NL2SQLAgent
 
 st.set_page_config(
     page_title="NL2SQL Agent",
@@ -48,8 +54,17 @@ if prompt := st.chat_input("質問を入力してください（例：顧客数�
                 response = result["output"]
                 st.markdown(response)
 
-                with st.expander("📊 実行された SQL"):
-                    st.code(result.get("sql", ""), language="sql")
+                if use_react and "intermediate_steps" in result:
+                    with st.expander("🤖 エージェントの思考過程"):
+                        for i, (action, observation) in enumerate(result["intermediate_steps"]):
+                            st.markdown(f"**Step {i+1}:**")
+                            st.markdown(f"- Action: `{action.tool}`")
+                            st.markdown(f"- Input: `{action.tool_input}`")
+                            st.markdown(f"- Observation: {observation[:200]}...")
+                            st.divider()
+                elif "sql" in result:
+                    with st.expander("📊 実行された SQL"):
+                        st.code(result.get("sql", ""), language="sql")
 
                 if "data" in result and result["data"]:
                     with st.expander("📈 データ詳細"):

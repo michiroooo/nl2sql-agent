@@ -9,14 +9,13 @@ import agentops
 from langchain_community.llms import Ollama
 
 from database import DatabaseManager
+from mcp_client import MCPDatabaseClient
 
 
-SQL_GENERATION_PROMPT = """You are a SQL query generator for a Japanese e-commerce database using DuckDB.
+SQL_GENERATION_PROMPT = """You are a SQL query generator for a DuckDB database.
 
 Database Schema:
-- customers: customer_id (INTEGER), customer_name (VARCHAR), prefecture (VARCHAR), registration_date (DATE)
-- products: product_id (INTEGER), product_name (VARCHAR), category (VARCHAR), price (INTEGER), stock_quantity (INTEGER)
-- orders: order_id (INTEGER), customer_name (VARCHAR), product_id (INTEGER), quantity (INTEGER), order_date (DATE), total_amount (INTEGER)
+{schema}
 
 User Question: {question}
 
@@ -44,6 +43,15 @@ class NL2SQLAgent:
         self.db_manager = DatabaseManager()
         self.llm = self._initialize_llm()
 
+        mcp_enabled = os.getenv("MCP_ENABLED", "false").lower() == "true"
+        if mcp_enabled:
+            try:
+                self.mcp_client = MCPDatabaseClient(db_path="/app/data/ecommerce.db")
+            except Exception:
+                self.mcp_client = None
+        else:
+            self.mcp_client = None
+
         agentops_key = os.getenv("AGENTOPS_API_KEY")
         if agentops_key:
             try:
@@ -64,7 +72,12 @@ class NL2SQLAgent:
 
     def _generate_sql(self, question: str) -> str:
         """Generate SQL query from natural language question."""
-        prompt = SQL_GENERATION_PROMPT.format(question=question)
+        if self.mcp_client:
+            schema = self.mcp_client.get_schema()
+        else:
+            schema = self.db_manager.get_schema()
+
+        prompt = SQL_GENERATION_PROMPT.format(schema=schema, question=question)
         sql = self.llm.invoke(prompt)
 
         sql = sql.strip()
@@ -127,19 +140,33 @@ class NL2SQLAgent:
 
     def get_schema_info(self) -> dict[str, Any]:
         """Get database schema information."""
-        schema = self.db_manager.get_schema()
+        if self.mcp_client:
+            schema_text = self.mcp_client.get_schema()
+        else:
+            schema_text = self.db_manager.get_schema()
 
         tables = []
-        for line in schema.split("\n"):
-            if line.startswith("Table:"):
-                current_table = {"name": line.split(":")[1].strip(), "columns": []}
-                tables.append(current_table)
-            elif line.strip() and ":" in line and tables:
-                col_name, col_type = line.strip().split(":")
-                tables[-1]["columns"].append({
-                    "name": col_name.strip(),
-                    "type": col_type.strip()
-                })
+        current_table = None
+
+        for line in schema_text.split("\n"):
+            line = line.strip()
+            if line.startswith("Table:") or line.startswith("-- Table:"):
+                if current_table:
+                    tables.append(current_table)
+                table_name = line.split(":")[-1].strip()
+                current_table = {"name": table_name, "columns": []}
+            elif line and current_table:
+                parts = line.split()
+                if len(parts) >= 2:
+                    col_name = parts[0]
+                    col_type = " ".join(parts[1:])
+                    current_table["columns"].append({
+                        "name": col_name,
+                        "type": col_type
+                    })
+
+        if current_table:
+            tables.append(current_table)
 
         for table in tables:
             query = f"SELECT COUNT(*) as count FROM {table['name']}"
