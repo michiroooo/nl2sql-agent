@@ -55,12 +55,24 @@ docker-compose up -d
 ### 5. Download Ollama Model
 
 ```bash
-docker exec -it nl2sql-ollama ollama pull gemma2:9b-instruct-fp16
+docker exec -it nl2sql-ollama ollama pull gemma2:2b-instruct-q4_K_M
 ```
 
 ### 6. Access Open WebUI
 
-Open http://localhost:3000 in your browser.
+Open http://localhost:3000 in your browser and create an account.
+
+### 7. Register NL2SQL Function
+
+1. Click **Admin Settings** (gear icon in top right)
+2. Navigate to **Workspace** → **Functions**
+3. Click **Create New Function** or **Import Function**
+4. Enter Function endpoint URL: `http://nl2sql-function:8000`
+5. Click **Save**
+
+The Function should now appear in your Functions list. You can now use it by mentioning it in chat (e.g., "@NL2SQL Database Query Agent 顧客数を教えて")
+
+For detailed instructions, see [docs/open-webui-setup.md](docs/open-webui-setup.md).
 
 ## Usage
 
@@ -153,7 +165,7 @@ order_id, customer_name, product_id, quantity, order_date, total_amount
 | `AGENTOPS_API_KEY` | AgentOps API key | (optional) |
 | `DATABASE_PATH` | Path to DuckDB file | `/app/data/ecommerce.db` |
 | `OLLAMA_BASE_URL` | Ollama API endpoint | `http://ollama:11434` |
-| `OLLAMA_MODEL` | LLM model name | `gemma2:9b-instruct-fp16` |
+| `OLLAMA_MODEL` | LLM model name | `gemma2:2b-instruct-q4_K_M` |
 
 ## Monitoring
 

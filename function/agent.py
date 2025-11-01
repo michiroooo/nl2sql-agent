@@ -6,49 +6,27 @@ import os
 from typing import Any
 
 import agentops
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain.prompts import PromptTemplate
-from langchain_community.agent_toolkits import SQLDatabaseToolkit
 from langchain_community.llms import Ollama
+from langchain_community.utilities import SQLDatabase
 
 from database import DatabaseManager
 
 
-AGENT_PROMPT = """You are a SQL expert assistant that helps users query a Japanese e-commerce database.
+SYSTEM_PROMPT = """あなたは日本のECサイトのデータベースを操作するSQLエキスパートです。
 
-You have access to the following tables:
+データベーススキーマ:
 - customers: customer_id, customer_name, prefecture, registration_date
 - products: product_id, product_name, category, price, stock_quantity
 - orders: order_id, customer_name, product_id, quantity, order_date, total_amount
 
-IMPORTANT RULES:
-1. Generate SQL queries based on user's natural language questions
-2. Always use proper JOIN conditions when combining tables
-3. Return clear, formatted results
-4. If the query is ambiguous, ask for clarification
-5. Use aggregate functions (SUM, AVG, COUNT) appropriately
-6. Format dates correctly for comparisons
-7. Handle Japanese text properly in WHERE clauses
+重要なルール:
+1. 日本語の質問を理解し、適切なSQLクエリを生成する
+2. JOINが必要な場合は適切な結合条件を使用する
+3. 集計関数(SUM, COUNT, AVG等)を適切に使用する
+4. 日付のフィルタリングには適切なフォーマットを使用する
+5. 結果は分かりやすく整形する
 
-You have access to the following tools:
-
-{tools}
-
-Use the following format:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-Begin!
-
-Question: {input}
-Thought: {agent_scratchpad}
+質問に対して、まずSQLクエリを生成し、それを実行した結果を日本語で説明してください。
 """
 
 
@@ -58,8 +36,7 @@ class NL2SQLAgent:
     def __init__(self) -> None:
         self.db_manager = DatabaseManager()
         self.llm = self._initialize_llm()
-        self.agent = self._create_agent()
-        
+
         agentops_key = os.getenv("AGENTOPS_API_KEY")
         if agentops_key:
             agentops.init(api_key=agentops_key)
@@ -68,49 +45,69 @@ class NL2SQLAgent:
         """Initialize Ollama LLM."""
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "gemma2:9b-instruct-fp16")
-        
+
         return Ollama(
             base_url=base_url,
             model=model,
             temperature=0.0,
         )
 
-    def _create_agent(self) -> AgentExecutor:
-        """Create LangChain SQL agent."""
-        toolkit = SQLDatabaseToolkit(
-            db=self.db_manager.sql_database,
-            llm=self.llm
-        )
-        
-        prompt = PromptTemplate.from_template(AGENT_PROMPT)
-        
-        agent = create_react_agent(
-            llm=self.llm,
-            tools=toolkit.get_tools(),
-            prompt=prompt
-        )
-        
-        return AgentExecutor(
-            agent=agent,
-            tools=toolkit.get_tools(),
-            verbose=True,
-            max_iterations=10,
-            handle_parsing_errors=True,
-        )
+    def _generate_sql(self, question: str) -> str:
+        """Generate SQL query from natural language question."""
+        schema_info = self.db_manager.get_schema()
 
-    @agentops.record_action("nl2sql_query")
+        prompt = f"""{SYSTEM_PROMPT}
+
+データベーススキーマ情報:
+{schema_info}
+
+質問: {question}
+
+上記の質問に答えるためのSQLクエリを生成してください。
+SQLクエリのみを返し、説明や追加のテキストは不要です。
+クエリはSELECT文で始めてください。
+
+SQL:"""
+
+        sql = self.llm.invoke(prompt)
+
+        # Clean up the response
+        sql = str(sql).strip()
+        if sql.startswith("```sql"):
+            sql = sql.replace("```sql", "").replace("```", "").strip()
+        elif sql.startswith("```"):
+            sql = sql.replace("```", "").strip()
+
+        # Extract only SELECT query
+        if "SELECT" in sql.upper():
+            sql_lines = sql.split("\n")
+            sql = "\n".join([line for line in sql_lines if line.strip() and not line.strip().startswith("#")])
+
+        return sql.strip()
+
     def process_query(self, user_input: str) -> dict[str, Any]:
         """Process natural language query and return SQL results."""
         try:
-            result = self.agent.invoke({"input": user_input})
-            
+            # Generate SQL query
+            sql_query = self._generate_sql(user_input)
+
+            # Execute SQL query
+            result = self.db_manager.execute_query(sql_query)
+
+            # Format result
+            if result:
+                output = f"実行したSQL:\n{sql_query}\n\n結果:\n{result}"
+            else:
+                output = f"実行したSQL:\n{sql_query}\n\n結果: データが見つかりませんでした。"
+
             return {
                 "success": True,
-                "output": result.get("output", ""),
+                "output": output,
+                "sql": sql_query,
+                "result": str(result),
                 "input": user_input,
             }
         except Exception as e:
-            agentops.record_error(str(e))
             return {
                 "success": False,
                 "error": str(e),

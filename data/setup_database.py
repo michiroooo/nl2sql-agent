@@ -90,7 +90,7 @@ def generate_products() -> pd.DataFrame:
     """Generate product catalog with realistic Japanese items."""
     rows = []
     product_id = 1
-    
+
     for category, items in PRODUCTS.items():
         for name, price in items:
             rows.append({
@@ -101,7 +101,7 @@ def generate_products() -> pd.DataFrame:
                 "stock_quantity": random.randint(5, 100),
             })
             product_id += 1
-    
+
     return pd.DataFrame(rows)
 
 
@@ -114,13 +114,13 @@ def generate_orders(
     start_date = datetime(2024, 1, 1)
     end_date = datetime(2024, 10, 31)
     date_range = (end_date - start_date).days
-    
+
     rows = []
     for order_id in range(1, n + 1):
         customer = customers_df.sample(1).iloc[0]
         product = products_df.sample(1).iloc[0]
         quantity = random.randint(1, 5)
-        
+
         rows.append({
             "order_id": order_id,
             "customer_name": customer["customer_name"],
@@ -129,33 +129,33 @@ def generate_orders(
             "order_date": start_date + timedelta(days=random.randint(0, date_range)),
             "total_amount": product["price"] * quantity,
         })
-    
+
     return pd.DataFrame(rows)
 
 
 def main() -> None:
     """Create DuckDB database with sample data."""
     db_path = Path(__file__).parent / "ecommerce.db"
-    
+
     customers = generate_customers(200)
     products = generate_products()
     orders = generate_orders(customers, products, 1000)
-    
+
     conn = duckdb.connect(str(db_path))
-    
+
     conn.execute("DROP TABLE IF EXISTS customers")
     conn.execute("DROP TABLE IF EXISTS products")
     conn.execute("DROP TABLE IF EXISTS orders")
-    
+
     conn.execute("CREATE TABLE customers AS SELECT * FROM customers")
     conn.execute("CREATE TABLE products AS SELECT * FROM products")
     conn.execute("CREATE TABLE orders AS SELECT * FROM orders")
-    
+
     print(f"Database created at: {db_path}")
     print(f"Customers: {len(customers)}")
     print(f"Products: {len(products)}")
     print(f"Orders: {len(orders)}")
-    
+
     print("\n=== Sample Data ===")
     print("\nCustomers (first 5):")
     print(conn.execute("SELECT * FROM customers LIMIT 5").df())
@@ -163,7 +163,7 @@ def main() -> None:
     print(conn.execute("SELECT * FROM products LIMIT 5").df())
     print("\nOrders (first 5):")
     print(conn.execute("SELECT * FROM orders LIMIT 5").df())
-    
+
     conn.close()
 
 
