@@ -11,21 +11,28 @@ from langchain_community.llms import Ollama
 from database import DatabaseManager
 
 
-SQL_GENERATION_PROMPT = """You are a SQL query generator for a Japanese e-commerce database.
+SQL_GENERATION_PROMPT = """You are a SQL query generator for a Japanese e-commerce database using DuckDB.
 
 Database Schema:
-- customers: customer_id, customer_name, prefecture, registration_date
-- products: product_id, product_name, category, price, stock_quantity
-- orders: order_id, customer_name, product_id, quantity, order_date, total_amount
+- customers: customer_id (INTEGER), customer_name (VARCHAR), prefecture (VARCHAR), registration_date (DATE)
+- products: product_id (INTEGER), product_name (VARCHAR), category (VARCHAR), price (INTEGER), stock_quantity (INTEGER)
+- orders: order_id (INTEGER), customer_name (VARCHAR), product_id (INTEGER), quantity (INTEGER), order_date (DATE), total_amount (INTEGER)
 
 User Question: {question}
 
-Generate ONLY a valid DuckDB SQL query to answer this question. Do not include explanations.
-Rules:
-1. Use proper JOIN conditions when combining tables
-2. Use aggregate functions (COUNT, SUM, AVG) appropriately
-3. Format dates as YYYY-MM-DD for comparisons
-4. Return only SELECT queries (no INSERT/UPDATE/DELETE)
+Generate ONLY a valid DuckDB SQL query to answer this question. Do not include explanations or markdown formatting.
+
+IMPORTANT DuckDB SQL Rules:
+1. For date comparisons, use: WHERE order_date >= '2024-01-01' (string format, not DATE() function)
+2. For year extraction, use: EXTRACT(YEAR FROM order_date) or strftime(order_date, '%Y')
+3. Use proper JOIN conditions when combining tables
+4. Use aggregate functions (COUNT, SUM, AVG, MAX, MIN) appropriately
+5. Return only SELECT queries (no INSERT/UPDATE/DELETE)
+6. For top N results, use: ORDER BY ... LIMIT N
+
+Examples:
+- "2024年の売上": WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01'
+- "最も売れた商品": SELECT product_name, SUM(quantity) as total FROM orders JOIN products ... GROUP BY product_name ORDER BY total DESC LIMIT 1
 
 SQL Query:"""
 
