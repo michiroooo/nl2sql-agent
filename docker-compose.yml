@@ -1,6 +1,112 @@
 version: '3.8'
 
 services:
+  # AgentOps Self-Hosted Components
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: nl2sql-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_DB=otel_2
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-password}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./agentops/clickhouse/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15
+    container_name: nl2sql-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-agentops}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: nl2sql-otel-collector
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+      - "8888:8888"  # Prometheus metrics
+    volumes:
+      - ./agentops/otel-collector-config.yaml:/etc/otel/config.yaml
+    command: ["--config=/etc/otel/config.yaml"]
+    depends_on:
+      - clickhouse
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  agentops-api:
+    image: ghcr.io/agentops-ai/agentops/api:latest
+    container_name: nl2sql-agentops-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PROTOCOL=http
+      - API_DOMAIN=localhost:8000
+      - APP_DOMAIN=localhost:3000
+      - APP_URL=http://localhost:3000
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-password}
+      - CLICKHOUSE_DATABASE=otel_2
+      - CLICKHOUSE_SECURE=false
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DATABASE=${POSTGRES_DB:-agentops}
+    depends_on:
+      - clickhouse
+      - postgres
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  agentops-dashboard:
+    image: ghcr.io/agentops-ai/agentops/dashboard:latest
+    container_name: nl2sql-agentops-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+      - NEXT_PUBLIC_SITE_URL=http://localhost:3000
+      - NEXT_PUBLIC_ENVIRONMENT_TYPE=development
+      - NEXT_PUBLIC_PLAYGROUND=true
+    depends_on:
+      - agentops-api
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  # NL2SQL Application Components
   streamlit-ui:
     build:
       context: .
@@ -10,6 +116,8 @@ services:
       - "8501:8501"
     environment:
       - AGENTOPS_API_KEY=${AGENTOPS_API_KEY:-}
+      - AGENTOPS_API_ENDPOINT=http://agentops-api:8000
+      - AGENTOPS_EXPORTER_ENDPOINT=http://otel-collector:4318/v1/traces
       - DATABASE_PATH=/app/data/ecommerce.db
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
@@ -17,6 +125,8 @@ services:
       - ./data:/app/data
     depends_on:
       - ollama
+      - otel-collector
+      - agentops-api
     networks:
       - nl2sql-network
     restart: unless-stopped
@@ -34,6 +144,8 @@ services:
 
 volumes:
   ollama-data:
+  clickhouse-data:
+  postgres-data:
 
 networks:
   nl2sql-network:
