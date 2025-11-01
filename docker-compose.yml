@@ -1,16 +1,20 @@
 version: '3.8'
 
 services:
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: nl2sql-open-webui
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: nl2sql-streamlit
     ports:
-      - "3000:8080"
+      - "8501:8501"
     environment:
+      - AGENTOPS_API_KEY=${AGENTOPS_API_KEY:-}
+      - DATABASE_PATH=/app/data/ecommerce.db
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false
+      - OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
     volumes:
-      - open-webui-data:/app/backend/data
+      - ./data:/app/data
     depends_on:
       - ollama
     networks:
@@ -27,36 +31,8 @@ services:
     networks:
       - nl2sql-network
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-  nl2sql-function:
-    build:
-      context: ./function
-      dockerfile: Dockerfile
-    container_name: nl2sql-function
-    ports:
-      - "8001:8000"
-    environment:
-      - AGENTOPS_API_KEY=${AGENTOPS_API_KEY:-}
-      - DATABASE_PATH=/app/data/ecommerce.db
-      - OLLAMA_BASE_URL=http://ollama:11434
-    volumes:
-      - ./data:/app/data
-      - ./function:/app/function
-    depends_on:
-      - ollama
-    networks:
-      - nl2sql-network
-    restart: unless-stopped
 
 volumes:
-  open-webui-data:
   ollama-data:
 
 networks:
