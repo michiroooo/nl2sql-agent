@@ -9,10 +9,14 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - WEBUI_AUTH=false
+      - ENABLE_SIGNUP=True
+      - DEFAULT_USER_ROLE=admin
+      - PIPELINES_URL=http://nl2sql-function:8000
     volumes:
       - open-webui-data:/app/backend/data
     depends_on:
       - ollama
+      - nl2sql-function
     networks:
       - nl2sql-network
     restart: unless-stopped
@@ -27,13 +31,6 @@ services:
     networks:
       - nl2sql-network
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   nl2sql-function:
     build:
@@ -46,6 +43,7 @@ services:
       - AGENTOPS_API_KEY=${AGENTOPS_API_KEY:-}
       - DATABASE_PATH=/app/data/ecommerce.db
       - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=gemma2:2b-instruct-q4_K_M
     volumes:
       - ./data:/app/data
       - ./function:/app/function

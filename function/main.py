@@ -1,88 +1,109 @@
-"""FastAPI application for Open WebUI custom function."""
+"""Pipelines server for Open WebUI - NL2SQL Agent."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Iterator, Generator, Union
+from pydantic import BaseModel
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from agent import NL2SQLAgent
 
+
 app = FastAPI(
-    title="NL2SQL Agent API",
-    description="Natural Language to SQL conversion for Open WebUI",
+    title="NL2SQL Pipelines",
+    description="Natural Language to SQL Pipelines for Open WebUI",
     version="1.0.0",
 )
 
-agent = NL2SQLAgent()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-class QueryRequest(BaseModel):
-    """Request model for NL2SQL query."""
-    
-    query: str = Field(..., description="Natural language query in Japanese or English")
+class Pipeline:
+    """NL2SQL Pipeline for Open WebUI."""
+
+    class Valves(BaseModel):
+        """Configuration valves."""
+        pass
+
+    def __init__(self):
+        self.type = "pipe"
+        self.id = "nl2sql_agent"
+        self.name = "NL2SQL Database Query Agent"
+        self.valves = self.Valves()
+        self.agent = NL2SQLAgent()
+
+    async def on_startup(self):
+        print(f"on_startup: {__name__}")
+
+    async def on_shutdown(self):
+        print(f"on_shutdown: {__name__}")
+
+    def pipe(
+        self, user_message: str, model_id: str, messages: list[dict], body: dict
+    ) -> Union[str, Generator, Iterator]:
+        """Process natural language query."""
+        print(f"pipe: {__name__}")
+        print(f"user_message: {user_message}")
+
+        try:
+            result = self.agent.process_query(user_message)
+
+            if result["success"]:
+                return result["output"]
+            else:
+                return f"エラー: {result.get('error', '不明なエラー')}"
+        except Exception as e:
+            return f"エラー: {str(e)}"
 
 
-class QueryResponse(BaseModel):
-    """Response model for NL2SQL query."""
-    
-    success: bool
-    output: str | None = None
-    error: str | None = None
-    input: str
+# Global pipeline instance
+pipeline = Pipeline()
 
-
+# Pipelines API endpoints
 @app.get("/")
-async def root() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "ok", "service": "nl2sql-agent"}
+@app.get("/v1")
+async def get_status():
+    """Health check."""
+    return {"status": True}
 
 
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
-
-
-@app.get("/schema")
-async def get_schema() -> dict[str, str]:
-    """Get database schema information."""
-    try:
-        schema = agent.get_schema_info()
-        return {"schema": schema}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/query", response_model=QueryResponse)
-async def process_query(request: QueryRequest) -> QueryResponse:
-    """Process natural language query and return SQL results."""
-    result = agent.process_query(request.query)
-    
-    if not result["success"]:
-        raise HTTPException(status_code=400, detail=result.get("error", "Unknown error"))
-    
-    return QueryResponse(**result)
-
-
-@app.post("/chat")
-async def chat_endpoint(body: dict[str, Any]) -> dict[str, Any]:
-    """Open WebUI compatible chat endpoint."""
-    messages = body.get("messages", [])
-    if not messages:
-        raise HTTPException(status_code=400, detail="No messages provided")
-    
-    last_message = messages[-1].get("content", "")
-    if not last_message:
-        raise HTTPException(status_code=400, detail="Empty message")
-    
-    result = agent.process_query(last_message)
-    
+@app.get("/pipelines")
+@app.get("/v1/pipelines")
+async def list_pipelines():
+    """List available pipelines."""
     return {
-        "type": "message",
-        "content": result.get("output", result.get("error", "エラーが発生しました")),
+        "data": [
+            {
+                "id": pipeline.id,
+                "name": pipeline.name,
+                "type": pipeline.type,
+                "valves": True if hasattr(pipeline, "valves") else False,
+            }
+        ]
     }
+
+
+@app.post("/{pipeline_id}/pipe")
+@app.post("/v1/{pipeline_id}/pipe")
+async def pipe_endpoint(pipeline_id: str, body: dict):
+    """Main pipeline endpoint."""
+    if pipeline_id != pipeline.id:
+        return {"error": f"Pipeline {pipeline_id} not found"}
+
+    user_message = body.get("user_message", "")
+    model_id = body.get("model_id", "")
+    messages = body.get("messages", [])
+
+    result = pipeline.pipe(user_message, model_id, messages, body)
+    return {"response": result}
 
 
 if __name__ == "__main__":

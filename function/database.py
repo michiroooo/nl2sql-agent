@@ -39,17 +39,17 @@ class DatabaseManager:
         tables = self.connection.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'"
         ).fetchall()
-        
+
         schema_info = []
         for (table_name,) in tables:
             columns = self.connection.execute(
                 f"PRAGMA table_info('{table_name}')"
             ).fetchall()
-            
+
             schema_info.append(f"\n-- Table: {table_name}")
             for col in columns:
                 schema_info.append(f"  {col[1]} {col[2]}")
-        
+
         return "\n".join(schema_info)
 
     def execute_query(self, query: str) -> list[dict]:
