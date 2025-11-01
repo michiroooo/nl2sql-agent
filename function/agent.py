@@ -54,7 +54,7 @@ class NL2SQLAgent:
     def _initialize_llm(self) -> Ollama:
         """Initialize Ollama LLM."""
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        model = os.getenv("OLLAMA_MODEL", "gemma2:2b-instruct-q4_K_M")
+        model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M")
 
         return Ollama(
             base_url=base_url,

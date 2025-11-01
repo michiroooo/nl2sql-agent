@@ -55,7 +55,7 @@ docker compose up -d
 ### 5. Download Ollama Model
 
 ```bash
-docker exec -it nl2sql-ollama ollama pull gemma2:2b-instruct-q4_K_M
+docker exec -it nl2sql-ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
 ```
 
 ### 6. Access Streamlit UI
