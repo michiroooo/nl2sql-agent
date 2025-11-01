@@ -123,6 +123,7 @@ services:
       - OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
     volumes:
       - ./data:/app/data
+      - ag2-workspace:/tmp/ag2_workspace
     depends_on:
       - ollama
       - otel-collector
@@ -146,6 +147,7 @@ volumes:
   ollama-data:
   clickhouse-data:
   postgres-data:
+  ag2-workspace:
 
 networks:
   nl2sql-network:

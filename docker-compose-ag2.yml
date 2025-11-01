@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # Observability Stack (Lightweight)
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: nl2sql-clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    environment:
+      - CLICKHOUSE_DB=otel_2
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-password}
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./agentops/clickhouse/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: nl2sql-otel-collector
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+    volumes:
+      - ./agentops/otel-collector-config.yaml:/etc/otel/config.yaml
+    command: ["--config=/etc/otel/config.yaml"]
+    depends_on:
+      - clickhouse
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  # AG2 Multi-Agent Application
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: nl2sql-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - AGENTOPS_API_KEY=${AGENTOPS_API_KEY:-}
+      - AGENTOPS_EXPORTER_ENDPOINT=http://otel-collector:4318/v1/traces
+      - DATABASE_PATH=/app/data/ecommerce.db
+      - OLLAMA_BASE_URL=http://ollama:11434/v1
+      - OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+    volumes:
+      - ./data:/app/data
+      - ag2-workspace:/tmp/ag2_workspace
+    depends_on:
+      - ollama
+      - otel-collector
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nl2sql-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  clickhouse-data:
+  ag2-workspace:
+
+networks:
+  nl2sql-network:
+    driver: bridge
