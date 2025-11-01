@@ -1,19 +1,20 @@
-# NL2SQL Agent with Open WebUI
+# NL2SQL Agent with Streamlit
 
-Natural Language to SQL conversion system using Open WebUI frontend with AgentOps monitoring.
+Natural Language to SQL conversion system using Streamlit UI with AgentOps monitoring.
 
 ## Features
 
 - 🗣️ **Natural Language Interface**: Query databases using Japanese or English
 - 🚀 **High Performance**: DuckDB for sub-100ms query execution
 - 🔍 **AgentOps Monitoring**: Track agent behavior and performance
-- 💬 **Chat Interface**: Open WebUI for intuitive user experience
+- 💬 **Chat Interface**: Streamlit for intuitive user experience
 - 🇯🇵 **Japanese Support**: Optimized for Japanese e-commerce data
+- 📊 **Data Visualization**: View SQL queries and results inline
 
 ## Architecture
 
 ```
-Open WebUI (Port 3000) → FastAPI Backend (Port 8001) → DuckDB + Ollama + AgentOps
+Streamlit UI (Port 8501) → NL2SQL Agent → DuckDB + Ollama + AgentOps
 ```
 
 ## Quick Start
@@ -21,7 +22,6 @@ Open WebUI (Port 3000) → FastAPI Backend (Port 8001) → DuckDB + Ollama + Age
 ### Prerequisites
 
 - Docker and Docker Compose
-- (Optional) NVIDIA GPU for faster inference
 
 ### 1. Clone Repository
 
@@ -49,18 +49,18 @@ cd ..
 ### 4. Start Services
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 5. Download Ollama Model
 
 ```bash
-docker exec -it nl2sql-ollama ollama pull gemma2:9b-instruct-fp16
+docker exec -it nl2sql-ollama ollama pull gemma2:2b-instruct-q4_K_M
 ```
 
-### 6. Access Open WebUI
+### 6. Access Streamlit UI
 
-Open http://localhost:3000 in your browser.
+Open http://localhost:8501 in your browser.
 
 ## Usage
 
@@ -68,38 +68,21 @@ Open http://localhost:3000 in your browser.
 
 **Japanese:**
 ```
-在庫が10個以下の商品を教えて
-2024年10月の商品カテゴリ別売上合計を教えて
-東京都在住の顧客で購入金額が10万円以上の人を抽出して
+顧客数を教えて
+2024年で最も売れた商品の名前と売上個数を教えて
+東京都在住の顧客数を教えて
+購入金額トップ3の顧客名と購入金額を教えて
 ```
 
 **English:**
 ```
-Show me products with stock less than 10
-Calculate total sales by category for October 2024
-List Tokyo customers who spent over 100,000 yen
+Show me the number of customers
+What product sold the most in 2024?
+How many customers are from Tokyo?
+Show top 3 customers by purchase amount
 ```
 
 See `data/sample_queries.md` for more examples.
-
-## API Endpoints
-
-### Health Check
-```bash
-curl http://localhost:8001/health
-```
-
-### Get Database Schema
-```bash
-curl http://localhost:8001/schema
-```
-
-### Query via API
-```bash
-curl -X POST http://localhost:8001/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "在庫が10個以下の商品を教えて"}'
-```
 
 ## Development
 
@@ -108,8 +91,11 @@ curl -X POST http://localhost:8001/query \
 ```
 .
 ├── docker-compose.yml
+├── ui/
+│   ├── app.py            # Streamlit UI
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── function/
-│   ├── main.py           # FastAPI app
 │   ├── agent.py          # NL2SQL agent
 │   ├── database.py       # DuckDB manager
 │   └── requirements.txt
