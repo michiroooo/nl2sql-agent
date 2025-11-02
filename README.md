@@ -1,6 +1,12 @@
+<<<<<<< HEAD
 # NL2SQL Agent with MCP Integration
 
 Natural Language to SQL conversion system using Model Context Protocol (MCP) with Streamlit UI and AgentOps monitoring.
+=======
+# NL2SQL Agent with Streamlit
+
+Natural Language to SQL conversion system using Streamlit UI with AgentOps monitoring.
+>>>>>>> main
 
 ## Features
 
@@ -11,11 +17,15 @@ Natural Language to SQL conversion system using Model Context Protocol (MCP) wit
 - 💬 **Chat Interface**: Streamlit for intuitive user experience
 - 🇯🇵 **Japanese Support**: Optimized for Japanese e-commerce data
 - 📊 **Data Visualization**: View SQL queries and results inline
+<<<<<<< HEAD
 - 🤖 **Autonomous Agent**: LLM explores schema and generates queries independently
+=======
+>>>>>>> main
 
 ## Architecture
 
 ```
+<<<<<<< HEAD
 ┌─────────────────────────────────────────────────────────────┐
 │                      Streamlit UI (8501)                    │
 └────────────────────────┬────────────────────────────────────┘
@@ -41,6 +51,9 @@ Natural Language to SQL conversion system using Model Context Protocol (MCP) wit
 │   DuckDB Database       │
 │   ecommerce.db          │
 └─────────────────────────┘
+=======
+Streamlit UI (Port 8501) → NL2SQL Agent → DuckDB + Ollama + AgentOps
+>>>>>>> main
 ```
 
 ### Key Components
@@ -102,7 +115,11 @@ docker exec -it nl2sql-ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
 
 ### 6. Access Streamlit UI
 
+<<<<<<< HEAD
 Open <http://localhost:8501> in your browser.
+=======
+Open http://localhost:8501 in your browser.
+>>>>>>> main
 
 ## Usage
 
@@ -111,8 +128,12 @@ Open <http://localhost:8501> in your browser.
 The system uses MCP tools by default for autonomous database exploration:
 
 **Japanese:**
+<<<<<<< HEAD
 
 ```text
+=======
+```
+>>>>>>> main
 顧客数を教えて
 2024年で最も売れた商品の名前と売上個数を教えて
 東京都在住の顧客数を教えて
@@ -127,6 +148,7 @@ What product sold the most in 2024?
 How many customers are from Tokyo?
 Show top 3 customers by purchase amount
 ```
+<<<<<<< HEAD
 
 The agent will automatically:
 
@@ -143,6 +165,13 @@ Click "エージェントの思考過程" (Agent Thought Process) expander to se
 - **Step 2**: SQL query generation
 - **Step 3**: Query execution
 - **Final Answer**: Natural language response
+=======
+Show me the number of customers
+What product sold the most in 2024?
+How many customers are from Tokyo?
+Show top 3 customers by purchase amount
+```
+>>>>>>> main
 
 See `data/sample_queries.md` for more examples.
 
@@ -158,8 +187,12 @@ See `data/sample_queries.md` for more examples.
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── function/
+<<<<<<< HEAD
 │   ├── agent_react.py    # NL2SQL agent with MCP tools
 │   ├── mcp_tools.py      # LangChain tool wrappers for MCP
+=======
+│   ├── agent.py          # NL2SQL agent
+>>>>>>> main
 │   ├── database.py       # DuckDB manager
 │   └── requirements.txt
 ├── mcp_server/
