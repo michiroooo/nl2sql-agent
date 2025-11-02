@@ -1,4 +1,4 @@
-"""Multi-agent system using AG2 (AutoGen) framework.
+"""Multi-agent system using AG2 (AutoGen) framework with Phoenix tracing.
 
 This module implements autonomous agents for database queries, web search,
 and predictive reasoning using AG2's conversational multi-agent pattern.
@@ -63,27 +63,32 @@ def create_sql_agent(config: AgentConfig) -> AssistantAgent:
     """
     db_tools = create_database_tools()
 
-    tool_descriptions = "\n".join([
-        f"- {name}: {func.__doc__.split('.')[0] if func.__doc__ else 'No description'}"
-        for name, func in db_tools.items()
-    ])
-
     agent = AssistantAgent(
         name="sql_specialist",
-        system_message=f"""You are a database query specialist for a Japanese e-commerce system.
+        system_message="""You are a SQL database expert for a Japanese e-commerce system.
 
-Available tools:
-{tool_descriptions}
+CRITICAL: You MUST call these functions to answer queries. DO NOT generate SQL in text.
 
-Your role:
-1. Analyze user queries for database information needs
-2. Use get_database_schema to understand table structures
-3. Generate appropriate SQL queries for DuckDB
-4. Execute queries using execute_sql_query
-5. Return results in clear Japanese
+Available functions:
+1. get_database_schema() - ALWAYS call this first to see table structures
+2. execute_sql_query(sql="YOUR_SQL") - Execute SQL and get results
 
-Always respond concisely and accurately.""",
+MANDATORY WORKFLOW:
+Step 1: Call get_database_schema() to see available tables
+Step 2: Write correct SQL for the user's question
+Step 3: Call execute_sql_query(sql="YOUR_SQL") with your SQL
+Step 4: Explain results in Japanese
+Step 5: Reply with "TERMINATE"
+
+Example for "顧客数を教えて":
+1. Call: get_database_schema()
+2. See customers table exists
+3. Call: execute_sql_query(sql="SELECT COUNT(*) FROM customers")
+4. Say: "顧客数は200人です。TERMINATE"
+
+NEVER write SQL in code blocks. ALWAYS use execute_sql_query() function.""",
         llm_config=config.llm_config,
+        is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
     )
 
     for name, func in db_tools.items():
@@ -123,8 +128,10 @@ Your role:
 3. Provide context from latest sources
 4. Summarize findings clearly in Japanese
 
+Important: When you have completed the task, respond with "TERMINATE" to end the conversation.
 Focus on factual, recent information.""",
         llm_config=config.llm_config,
+        is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
     )
 
     for name, func in web_tools.items():
@@ -161,9 +168,11 @@ Your role:
 4. Provide actionable insights in Japanese
 
 Use only allowed libraries: math, statistics, datetime, json, re
+Important: When you have completed the task, respond with "TERMINATE" to end the conversation.
 Always explain your reasoning and methodology.""",
         llm_config=config.llm_config,
         code_execution_config={"executor": executor},
+        is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
     )
 
     for name, func in interpreter_tools.items():
@@ -201,7 +210,8 @@ class MultiAgentOrchestrator:
             name="user",
             human_input_mode="NEVER",
             code_execution_config=False,
-            max_consecutive_auto_reply=0,
+            max_consecutive_auto_reply=10,
+            is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
         )
 
         self.group_chat = GroupChat(

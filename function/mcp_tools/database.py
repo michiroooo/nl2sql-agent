@@ -24,13 +24,27 @@ def create_database_tools(db_path: str | None = None) -> dict[str, Callable]:
     )
 
     def get_database_schema(query: str = "") -> str:
-        """Get database schema information.
+        """Get complete database schema with table structures and row counts.
+
+        This function returns information about all tables in the database,
+        including column names, types, and total row counts.
+        Call this FIRST before writing any SQL queries.
 
         Args:
             query: Optional table name filter (unused but required for tool signature).
 
         Returns:
-            Formatted schema information for all tables.
+            Formatted schema information showing:
+            - Table names
+            - Column names and data types
+            - Total number of rows in each table
+
+        Example output:
+            -- Table: customers
+              customer_id (INTEGER)
+              name (VARCHAR)
+              email (VARCHAR)
+              -- Total rows: 200
         """
         conn = duckdb.connect(db_path, read_only=True)
 
@@ -60,13 +74,27 @@ def create_database_tools(db_path: str | None = None) -> dict[str, Callable]:
             conn.close()
 
     def execute_sql_query(sql: str) -> str:
-        """Execute SQL query and return results.
+        """Execute SQL query against the database and return formatted results.
+
+        Use this function to run SELECT, COUNT, JOIN, and other SQL queries.
+        The database is read-only for safety.
+        Results are limited to 50 rows maximum.
 
         Args:
-            sql: SQL query to execute.
+            sql: Valid SQL query string (e.g., "SELECT * FROM customers LIMIT 10")
 
         Returns:
-            Query results as formatted string.
+            Formatted table with query results showing:
+            - Column headers
+            - Data rows (max 50)
+            - Total row count if more than 50
+
+        Example:
+            Input: "SELECT COUNT(*) FROM customers"
+            Output: "COUNT(*) | 200"
+
+        Errors:
+            Returns error message if SQL is invalid or table doesn't exist.
         """
         conn = duckdb.connect(db_path, read_only=True)
 

@@ -10,7 +10,7 @@ Natural Language to SQL conversion system with autonomous multi-agent collaborat
   - **Data Analyst**: Statistical analysis and predictions with code execution
 - 🗣️ **Natural Language Interface**: Query databases using Japanese natural language
 - 🚀 **High Performance**: DuckDB for sub-100ms query execution
-- 📊 **Full Observability**: OpenTelemetry + ClickHouse for distributed tracing
+- 📊 **Full Observability**: Phoenix (Arize AI) for automatic LLM tracing
 - 💬 **Interactive UI**: Streamlit for intuitive multi-agent conversation
 - 🇯🇵 **Japanese Optimized**: LLM fine-tuned for Japanese e-commerce queries
 
@@ -74,6 +74,7 @@ User: "明日の売上を予測して"
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b-instruct-q4_K_M` | LLM model |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama endpoint |
 | `DATABASE_PATH` | `/app/data/ecommerce.db` | DuckDB path |
+| `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:6006` | Phoenix collector URL |
 
 ### Agent Settings
 
@@ -118,23 +119,27 @@ docker compose -f docker-compose-ag2.yml build --no-cache streamlit-ui
 ### Database Not Found
 
 Generate database:
+
 ```bash
 cd data && python setup_database.py
 ```
 
-### Traces Not Appearing
+## Observability
 
-Check OTel Collector:
-```bash
-docker logs nl2sql-otel-collector --tail 50
-# Expected: "Everything is ready. Begin running and processing data."
-```
+### Phoenix Tracing
 
-Query ClickHouse:
-```bash
-docker exec nl2sql-clickhouse clickhouse-client --password password \
-  --query "SELECT COUNT(*) FROM otel_2.otel_traces"
-```
+Phoenix automatically traces all LLM calls and agent interactions with zero configuration.
+
+**Access Phoenix UI**: http://localhost:6006
+
+**Features**:
+- Automatic instrumentation (no decorators needed)
+- Real-time trace visualization
+- Agent conversation flow
+- LLM call details (tokens, latency, costs)
+- Tool execution tracking
+
+**No Setup Required**: Traces appear automatically after executing queries in the Streamlit UI.
 
 ## Performance
 
@@ -147,10 +152,13 @@ docker exec nl2sql-clickhouse clickhouse-client --password password \
 | Analysis | Multi | 15-30s | ~2000 |
 
 **Optimization Tips**:
+
 - Reduce `max_round` for simple queries
 - Use smaller model (gemma2:2b) for faster responses
 - Limit tool result sizes
 - Enable LLM response caching
+
+
 
 ## Project Structure
 
@@ -169,9 +177,6 @@ nl2sql-agent/
 │   └── setup_database.py         # Sample data generator
 ├── docs/
 │   └── architecture.md           # Detailed architecture docs
-├── agentops/
-│   ├── otel-collector-config.yaml
-│   └── clickhouse/migrations/
 └── docker-compose-ag2.yml        # Deployment config
 ```
 
@@ -183,5 +188,5 @@ MIT License
 
 - [AG2 (AutoGen) Documentation](https://microsoft.github.io/autogen/)
 - [DuckDB Documentation](https://duckdb.org/docs/)
-- [OpenTelemetry Python](https://opentelemetry.io/docs/languages/python/)
+- [Phoenix (Arize AI) Documentation](https://docs.arize.com/phoenix)
 - [Streamlit Documentation](https://docs.streamlit.io/)

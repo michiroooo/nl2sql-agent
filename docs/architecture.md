@@ -24,7 +24,7 @@ AG2マルチエージェントシステムは、**専門化と協調**の原則�
 - **専門エージェント**: SQL、Web検索、推論の3つの専門領域に特化
 - **自律的協調**: GroupChatパターンによる自動的なエージェント選択
 - **標準化ツール**: MCP (Model Context Protocol) による統一ツールインターフェース
-- **完全な可観測性**: OpenTelemetryによる分散トレーシング
+- **完全な可観測性**: Phoenix (Arize AI) による自動LLMトレーシング
 
 ### 技術スタック
 
@@ -35,7 +35,7 @@ AG2マルチエージェントシステムは、**専門化と協調**の原則�
 | LLM | Ollama (qwen2.5-coder:7b) | 自然言語理解・生成 |
 | データベース | DuckDB | 高速SQL実行 |
 | ツール標準化 | MCP | 統一ツールインターフェース |
-| 可観測性 | OpenTelemetry + ClickHouse | トレーシング・メトリクス |
+| 可観測性 | Phoenix (Arize AI) | 自動LLMトレーシング |
 | デプロイ | Docker Compose | コンテナオーケストレーション |
 
 ---
@@ -103,16 +103,15 @@ AG2マルチエージェントシステムは、**専門化と協調**の原則�
 └─────────────────────┘
 
 [All components]
-     │ OTLP Traces (HTTP:4318)
+     │ Auto-instrumentation
      ▼
 ┌─────────────────────┐
-│  OTel Collector     │
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│    ClickHouse       │
-│  otel_2.otel_traces │
+│   Phoenix Server    │
+│  (http://localhost  │
+│       :6006)        │
+│                     │
+│  • Trace collector  │
+│  • UI dashboard     │
 └─────────────────────┘
 ```
 
@@ -155,8 +154,8 @@ def get_orchestrator() -> MultiAgentOrchestrator:
 ```python
 class AgentConfig:
     """エージェント設定の統一管理"""
-    
-    def __init__(self, model: str | None = None, 
+
+    def __init__(self, model: str | None = None,
                  base_url: str | None = None,
                  temperature: float = 0.0):
         self.llm_config = {
@@ -179,34 +178,34 @@ class AgentConfig:
 ```python
 class MultiAgentOrchestrator:
     """メインオーケストレータクラス"""
-    
+
     def __init__(self, model: str | None = None,
                  base_url: str | None = None,
                  work_dir: Path | None = None):
         # 1. 設定初期化
         config = AgentConfig(model, base_url)
-        
+
         # 2. 専門エージェント作成
         self.sql_agent = create_sql_agent(config)
         self.web_agent = create_web_agent(config)
         self.reasoning_agent = create_reasoning_agent(config, work_dir)
-        
+
         # 3. ユーザープロキシ作成
         self.user_proxy = UserProxyAgent(
             name="user",
             human_input_mode="NEVER",  # 自動実行
             code_execution_config=False,
         )
-        
+
         # 4. GroupChat設定
         self.group_chat = GroupChat(
-            agents=[self.user_proxy, self.sql_agent, 
+            agents=[self.user_proxy, self.sql_agent,
                    self.web_agent, self.reasoning_agent],
             messages=[],
             max_round=10,
             speaker_selection_method="auto",  # 自動選択
         )
-        
+
         # 5. GroupChatManager作成
         self.manager = GroupChatManager(
             groupchat=self.group_chat,
@@ -219,10 +218,10 @@ class MultiAgentOrchestrator:
 ```python
 def execute(self, query: str) -> dict[str, Any]:
     """クエリを実行してエージェント会話を取得
-    
+
     Args:
         query: ユーザーからの自然言語クエリ
-        
+
     Returns:
         {
             "conversation": [{"name": "agent_name", "content": "..."}],
@@ -231,18 +230,18 @@ def execute(self, query: str) -> dict[str, Any]:
     """
     self.group_chat.reset()  # 会話履歴クリア
     self.user_proxy.initiate_chat(self.manager, message=query)
-    
+
     # 会話履歴の抽出・整形
     conversation = [
-        {"name": msg.get("name", "unknown"), 
+        {"name": msg.get("name", "unknown"),
          "content": msg.get("content", "")}
         for msg in self.group_chat.messages
         if msg.get("content")
     ]
-    
+
     return {
         "conversation": conversation,
-        "agents": list(set(msg["name"] for msg in conversation 
+        "agents": list(set(msg["name"] for msg in conversation
                           if msg["name"] != "user"))
     }
 ```
@@ -257,7 +256,7 @@ def execute(self, query: str) -> dict[str, Any]:
 
 **システムメッセージ**:
 ```python
-"""You are a SQL specialist. 
+"""You are a SQL specialist.
 Analyze database schemas and generate SQL queries.
 Use get_database_schema to understand table structures.
 Use execute_sql_query to run queries.
@@ -342,10 +341,10 @@ reasoning_agent.register_for_execution(code_executor=executor)
 ```python
 def create_database_tools() -> dict[str, Callable]:
     """データベースツールの作成"""
-    
+
     def get_database_schema(query: str = "") -> str:
         """テーブルスキーマ取得
-        
+
         Returns:
             "Table: customers (200 rows)\n..."
         """
@@ -353,29 +352,29 @@ def create_database_tools() -> dict[str, Callable]:
         tables = conn.execute(
             "SELECT table_name FROM information_schema.tables"
         ).fetchall()
-        
+
         result = []
         for table in tables:
             row_count = conn.execute(
                 f"SELECT COUNT(*) FROM {table[0]}"
             ).fetchone()[0]
             result.append(f"Table: {table[0]} ({row_count} rows)")
-        
+
         return "\n".join(result)
-    
+
     def execute_sql_query(sql: str) -> str:
         """SQL実行（最大50行）
-        
+
         Args:
             sql: 実行するSQLクエリ
-            
+
         Returns:
             フォーマット済み結果テーブル
         """
         conn = duckdb.connect(DATABASE_PATH)
         df = conn.execute(sql).df()
         return df.head(50).to_string()
-    
+
     return {
         "get_database_schema": get_database_schema,
         "execute_sql_query": execute_sql_query,
@@ -387,24 +386,24 @@ def create_database_tools() -> dict[str, Callable]:
 ```python
 def create_web_tools() -> dict[str, Callable]:
     """Web検索・スクレイピングツール"""
-    
+
     def web_search(query: str) -> str:
         """DuckDuckGo検索（上位5件）"""
         results = DDGS().text(query, max_results=5)
         return json.dumps(results, ensure_ascii=False)
-    
+
     def scrape_webpage(url: str) -> str:
         """Webページのコンテンツ抽出（2000文字制限）"""
         response = httpx.get(url, timeout=10.0)
         soup = BeautifulSoup(response.text, "html.parser")
-        
+
         # script/styleタグ削除
         for tag in soup(["script", "style"]):
             tag.decompose()
-        
+
         text = soup.get_text()
         return text[:2000]
-    
+
     return {
         "web_search": web_search,
         "scrape_webpage": scrape_webpage,
@@ -418,10 +417,10 @@ ALLOWED_IMPORTS = {'math', 'statistics', 'datetime', 'json', 're'}
 
 def create_interpreter_tool() -> dict[str, Callable]:
     """安全なPythonインタープリタ"""
-    
+
     def python_interpreter(code: str) -> str:
         """サンドボックス環境でコード実行
-        
+
         Security:
             - ホワイトリストインポートのみ許可
             - ファイルI/O禁止
@@ -435,13 +434,13 @@ def create_interpreter_tool() -> dict[str, Callable]:
                 for alias in node.names:
                     if alias.name.split('.')[0] not in ALLOWED_IMPORTS:
                         raise ValueError(f"Import not allowed: {alias.name}")
-        
+
         # 制限付き環境で実行
         namespace = {"__builtins__": {}}
         exec(code, namespace)
-        
+
         return str(namespace.get("result", "No result"))
-    
+
     return {"python_interpreter": python_interpreter}
 ```
 
@@ -519,16 +518,24 @@ User Browser: 回答表示
 ### 5. テレメトリ
 
 ```text
-全オペレーション
+全オペレーション(自動インストルメンテーション)
     ↓
-OpenTelemetry Instrumentation
+OpenTelemetry SDK
     ↓
-OTLP Exporter (HTTP:4318)
+OTLP gRPC: Phoenix Collector (port 4317)
     ↓
-OTel Collector
+Phoenix Server
     ↓
-ClickHouse: INSERT INTO otel_2.otel_traces
+SQLite: トレースデータ永続化
+    ↓
+Phoenix UI: トレース可視化 (http://localhost:6006)
 ```
+
+**特徴**:
+- デコレーター不要（自動インストルメンテーション）
+- APIキー不要
+- リアルタイムトレース表示
+- LLMコール、エージェント会話、ツール実行の完全な可視化
 
 ---
 
@@ -706,7 +713,7 @@ try:
 except Exception as e:
     logger.error(f"Agent execution failed: {e}")
     return {
-        "conversation": [{"name": "system", 
+        "conversation": [{"name": "system",
                          "content": f"エラー: {str(e)}"}],
         "agents": []
     }
@@ -787,4 +794,5 @@ Streamlit displays (including errors)
 
 - [AG2 (AutoGen) Documentation](https://microsoft.github.io/autogen/)
 - [DuckDB Documentation](https://duckdb.org/docs/)
-- [OpenTelemetry Python](https://opentelemetry.io/docs/languages/python/)
+- [Phoenix (Arize AI) Documentation](https://docs.arize.com/phoenix/)
+- [Model Context Protocol](https://modelcontextprotocol.io/)

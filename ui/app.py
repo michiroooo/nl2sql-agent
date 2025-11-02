@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import streamlit as st
+from phoenix.otel import register
+from openinference.instrumentation.openai import OpenAIInstrumentor
+
+# Initialize Phoenix tracing
+tracer_provider = register(
+    project_name="ag2-multi-agent",
+    endpoint=os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:6006"),
+)
+OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
 
 sys.path.append(str(Path(__file__).parent.parent / "function"))
 
