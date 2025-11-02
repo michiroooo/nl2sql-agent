@@ -2,14 +2,24 @@
 
 ## 1. Overview
 
-Natural language to SQL conversion system using Open WebUI as frontend with custom function backend for AgentOps integration.
+Natural language to SQL conversion system using Model Context Protocol (MCP) for autonomous database exploration with Streamlit UI and AgentOps monitoring.
 
 ### Architecture Goals
 
-- Leverage Open WebUI for chat interface and user management
-- Implement custom NL2SQL function with AgentOps monitoring
-- Use DuckDB for high-performance SQL queries
+- Implement MCP server for standardized database access
+- Enable LLM to autonomously explore database schema
+- Use ReAct pattern for transparent agent reasoning
 - Support Japanese natural language queries
+- Maintain high performance with DuckDB
+
+### Key Innovation: MCP Integration
+
+This system uses Model Context Protocol (MCP) to provide LLMs with standardized tools for database interaction. Unlike traditional approaches where schema is hardcoded, the LLM autonomously:
+
+1. Discovers database structure using `get_database_schema` tool
+2. Generates appropriate SQL queries based on discovered schema
+3. Executes queries using `execute_sql_query` tool
+4. Formats results into natural language
 
 ## 2. Technology Stack
 
@@ -17,37 +27,102 @@ Natural language to SQL conversion system using Open WebUI as frontend with cust
 
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
-| Frontend | Open WebUI | latest | Chat interface |
-| LLM | Ollama (gemma2:9b-instruct-fp16) | latest | Japanese language support |
-| Database | DuckDB | 0.9+ | High-speed SQL engine |
-| Backend | FastAPI | 0.104+ | Custom function API |
-| Monitoring | AgentOps | 0.2+ | Agent observability |
-| Container | Docker Compose | 3.8+ | Service orchestration |
+| Frontend | Streamlit | 1.39+ | Chat interface |
+| LLM | Ollama (qwen2.5-coder:7b) | latest | Code-specialized model |
+| Database | DuckDB | 1.4+ | High-speed SQL engine |
+| MCP Server | FastAPI | 0.120+ | MCP-compatible JSON-RPC server |
+| Agent Framework | LangChain | 1.0+ | Tool integration |
+| Backend | Python 3.11 | 3.11+ | Agent logic |
+| Monitoring | AgentOps | 0.4+ | Agent observability |
+| Container | Docker Compose | latest | Service orchestration |
 
-### Why gemma2:9b-instruct-fp16?
+### Why qwen2.5-coder:7b?
 
-- **Superior Japanese language understanding** compared to Llama
-- Instruction-tuned for structured outputs (SQL generation)
-- Balanced performance on consumer hardware
+- **Code-specialized model** optimized for SQL generation
+- Excellent instruction following for structured outputs
+- Compact 7B parameter size for fast inference
+- Good balance of performance and resource usage
 
 ## 3. System Architecture
 
-```
-┌─────────────────┐
-│   Open WebUI    │ ← User Interface (Port 3000)
-└────────┬────────┘
-         │ HTTP
-         ↓
-┌─────────────────┐
-│ Custom Function │ ← NL2SQL Logic (Port 8001)
-│   (FastAPI)     │
-└────────┬────────┘
+### High-Level Architecture
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                    Streamlit UI (8501)                       │
+│                  User Interface Layer                        │
+└────────────────────────────┬─────────────────────────────────┘
+                             │
+                             ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  NL2SQL Agent (agent_react.py)               │
+│                                                               │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │              ReAct Pattern Flow                        │  │
+│  │                                                         │  │
+│  │  1. Get Schema  → 2. Generate SQL →                   │  │
+│  │  3. Execute Query → 4. Format Answer                  │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  Tools: MCPToolFactory (mcp_tools.py)                       │
+└────────────┬─────────────────────────┬──────────────────────┘
+             │                         │
+             ▼                         ▼
+┌────────────────────────┐  ┌──────────────────────────────┐
+│  MCP Server (8080)     │  │    Ollama LLM (11434)        │
+│  FastAPI JSON-RPC      │  │  qwen2.5-coder:7b            │
+│                        │  │                              │
+│  Tools:                │  │  Capabilities:               │
+│  - get_database_schema │  │  - SQL generation            │
+│  - execute_sql_query   │  │  - Response formatting       │
+└────────┬───────────────┘  └──────────────────────────────┘
          │
-    ┌────┴────┬──────────┐
-    ↓         ↓          ↓
-┌────────┐ ┌──────┐ ┌─────────┐
-│ Ollama │ │DuckDB│ │AgentOps │
-└────────┘ └──────┘ └─────────┘
+         ▼
+┌─────────────────────────┐
+│   DuckDB Database       │
+│   ecommerce.db          │
+│                         │
+│   Tables:               │
+│   - customers (200)     │
+│   - products (30)       │
+│   - orders (1000)       │
+└─────────────────────────┘
+```
+
+### Component Interactions
+
+```text
+User Query: "顧客数を教えて"
+     │
+     ▼
+┌─────────────────────────────────────────────────┐
+│ Step 1: Get Schema                              │
+│ Agent → MCP Server → DuckDB                    │
+│ Returns: Table/column information              │
+└─────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────┐
+│ Step 2: Generate SQL                            │
+│ Agent → Ollama LLM                             │
+│ Prompt: Schema + User Question                 │
+│ Returns: SELECT COUNT(*) as count FROM customers│
+└─────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────┐
+│ Step 3: Execute Query                           │
+│ Agent → MCP Server → DuckDB                    │
+│ Returns: [{"count": 200}]                      │
+└─────────────────────────────────────────────────┘
+     │
+     ▼
+┌─────────────────────────────────────────────────┐
+│ Step 4: Format Answer                           │
+│ Agent → Ollama LLM                             │
+│ Prompt: Results + User Question                │
+│ Returns: "データベースには200人の顧客がいます" │
+└─────────────────────────────────────────────────┘
 ```
 
 ## 4. Database Schema
@@ -86,39 +161,175 @@ CREATE TABLE customers (
 ### Sample Data Content
 
 Japanese retail scenario:
+
 - **Products**: Electronics, books, groceries with Japanese names
 - **Customers**: Japanese names with prefecture data
 - **Orders**: Realistic transaction history spanning 2024
 
-## 5. Implementation Plan
+## 5. MCP Integration Details
 
-### Phase 1: Infrastructure Setup (Day 1)
+### MCP Server Implementation
+
+The custom MCP server (`mcp_server/server.py`) implements JSON-RPC 2.0 protocol:
+
+```python
+POST /mcp
+Content-Type: application/json
+
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "query",
+    "arguments": {
+      "query": "SELECT * FROM customers LIMIT 5"
+    }
+  }
+}
+```
+
+**Response Format**:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "[{\"customer_id\": 1, \"customer_name\": \"田中太郎\"}]"
+      }
+    ]
+  },
+  "error": null
+}
+```
+
+### MCP Tools
+
+#### 1. get_database_schema
+
+**Purpose**: Retrieve complete database schema
+
+**Implementation**:
+
+```python
+def get_schema_tool() -> Tool:
+    def get_schema(_: str = "") -> str:
+        schema_query = """
+        SELECT table_name, column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'main'
+        ORDER BY table_name, ordinal_position
+        """
+        result = _call_mcp_tool("query", {"query": schema_query})
+        # Format as human-readable schema
+        return formatted_schema
+
+    return Tool(
+        name="get_database_schema",
+        description="Get complete database schema...",
+        func=get_schema
+    )
+```
+
+**Output Example**:
+
+```text
+Table: customers
+  - customer_id (BIGINT)
+  - customer_name (VARCHAR)
+  - prefecture (VARCHAR)
+  - registration_date (TIMESTAMP_NS)
+
+Table: products
+  - product_id (BIGINT)
+  - product_name (VARCHAR)
+  - category (VARCHAR)
+  - price (BIGINT)
+```
+
+#### 2. execute_sql_query
+
+**Purpose**: Execute SQL query and return results
+
+**Implementation**:
+
+```python
+def query_tool() -> Tool:
+    def execute_query(sql: str) -> str:
+        result = _call_mcp_tool("query", {"query": sql})
+        return result
+
+    return Tool(
+        name="execute_sql_query",
+        description="Execute a SQL query...",
+        func=execute_query
+    )
+```
+
+**Input**: Valid DuckDB SQL SELECT query
+
+**Output**: JSON array of results
+
+### Agent Flow with MCP Tools
+
+```python
+class NL2SQLAgent:
+    def process_query(self, user_input: str):
+        # Step 1: Get schema
+        schema_result = self.tools["get_database_schema"].invoke("")
+
+        # Step 2: Generate SQL with LLM
+        sql_query = self.llm.invoke(f"Schema: {schema_result}\nQ: {user_input}")
+
+        # Step 3: Execute query
+        query_result = self.tools["execute_sql_query"].invoke(sql_query)
+
+        # Step 4: Format answer
+        final_answer = self.llm.invoke(f"Results: {query_result}\nQ: {user_input}")
+
+        return final_answer
+```
+
+## 6. Implementation Plan
+
+### Phase 1: Infrastructure Setup ✅
 
 - [x] Docker Compose configuration for all services
-- [x] Open WebUI deployment with Ollama integration
+- [x] Streamlit UI deployment
 - [x] DuckDB initialization with sample data
 - [x] Network configuration between containers
 
-### Phase 2: Backend Development (Day 2-3)
+### Phase 2: MCP Server Development ✅
 
-- [x] FastAPI custom function structure
-- [x] LangChain SQL agent implementation
+- [x] Custom FastAPI MCP server
+- [x] JSON-RPC 2.0 protocol implementation
+- [x] Database query tool implementation
+- [x] Error handling and validation
+
+### Phase 3: Agent Implementation ✅
+
+- [x] LangChain tool wrappers for MCP
+- [x] Agent with tool invocation logic
+- [x] Multi-step reasoning flow
 - [x] AgentOps integration for monitoring
-- [x] Error handling and validation logic
 
-### Phase 3: Integration & Testing (Day 4)
+### Phase 4: Integration & Testing ✅
 
-- [ ] Open WebUI function registration
-- [ ] End-to-end query testing
-- [ ] Performance optimization
-- [ ] Japanese language query validation
+- [x] End-to-end query testing
+- [x] Japanese language query validation
+- [x] Error handling verification
+- [x] UI integration with agent steps display
 
-### Phase 4: Documentation & Deployment (Day 5)
+### Phase 5: Documentation ✅
 
 - [x] API documentation
 - [x] User guide for query patterns
 - [x] Deployment instructions
-- [ ] AgentOps dashboard setup
+- [x] Architecture documentation
 
 ## 6. Key Features
 

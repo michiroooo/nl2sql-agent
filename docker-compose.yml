@@ -13,10 +13,13 @@ services:
       - DATABASE_PATH=/app/data/ecommerce.db
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=qwen2.5-coder:7b-instruct-q4_K_M
+      - MCP_ENABLED=true
+      - MCP_SERVER_URL=http://mcp-duckdb:8080
     volumes:
       - ./data:/app/data
     depends_on:
       - ollama
+      - mcp-duckdb
     networks:
       - nl2sql-network
     restart: unless-stopped
@@ -28,6 +31,25 @@ services:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  mcp-duckdb:
+    image: python:3.11-slim
+    container_name: nl2sql-mcp-duckdb
+    working_dir: /app
+    command: >
+      bash -c "pip install --no-cache-dir -r /app/mcp_server/requirements.txt &&
+               python /app/mcp_server/server.py"
+    environment:
+      - MCP_DB_PATH=/app/data/ecommerce.db
+      - MCP_READ_ONLY=true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./mcp_server:/app/mcp_server
     networks:
       - nl2sql-network
     restart: unless-stopped
