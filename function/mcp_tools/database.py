@@ -25,7 +25,7 @@ def create_database_tools(
     """
     mcp_url = mcp_url or os.getenv("MCP_SERVER_URL", "http://mcp-server:8080/mcp")
     use_mcp = os.getenv("USE_MCP", "true").lower() == "true"
-    
+
     db_path = db_path or os.getenv(
         "DATABASE_PATH",
         str(Path(__file__).parent.parent.parent / "data" / "ecommerce.db")
@@ -59,12 +59,12 @@ def create_database_tools(
     def _fallback_direct_query(sql: str) -> list[dict[str, Any]]:
         """Fallback to direct DuckDB query."""
         import duckdb
-        
+
         conn = duckdb.connect(db_path, read_only=True)
         try:
             result = conn.execute(sql).fetchall()
             headers = [desc[0] for desc in conn.description] if conn.description else []
-            
+
             rows = []
             for row in result:
                 row_dict = {headers[i]: row[i] for i in range(len(headers))}
@@ -105,14 +105,14 @@ def create_database_tools(
 
         try:
             result = _call_mcp_tool("query", {"query": schema_query})
-            
+
             if isinstance(result, dict) and "content" in result:
                 content = result["content"]
                 if isinstance(content, list) and len(content) > 0 and "text" in content[0]:
                     import json
                     rows = json.loads(content[0]["text"])
                     return _format_schema_from_rows(rows)
-            
+
             return "Failed to retrieve schema"
 
         except Exception:
@@ -137,7 +137,7 @@ def create_database_tools(
                     try:
                         count_query = f"SELECT COUNT(*) as count FROM {current_table}"
                         count_result = _call_mcp_tool("query", {"query": count_query})
-                        
+
                         if isinstance(count_result, dict) and "content" in count_result:
                             content = count_result["content"]
                             if isinstance(content, list) and len(content) > 0 and "text" in content[0]:
@@ -158,7 +158,7 @@ def create_database_tools(
             try:
                 count_query = f"SELECT COUNT(*) as count FROM {current_table}"
                 count_result = _call_mcp_tool("query", {"query": count_query})
-                
+
                 if isinstance(count_result, dict) and "content" in count_result:
                     content = count_result["content"]
                     if isinstance(content, list) and len(content) > 0 and "text" in content[0]:
@@ -197,14 +197,14 @@ def create_database_tools(
         """
         try:
             result = _call_mcp_tool("query", {"query": sql})
-            
+
             if isinstance(result, dict) and "content" in result:
                 content = result["content"]
                 if isinstance(content, list) and len(content) > 0 and "text" in content[0]:
                     import json
                     rows = json.loads(content[0]["text"])
                     return _format_query_results(rows)
-            
+
             return "Query failed"
 
         except Exception as e:

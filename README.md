@@ -1,14 +1,15 @@
-# NL2SQL Agent with AG2 Multi-Agent System
+# NL2SQL Agent with AG2 Multi-Agent System + MCP
 
-Natural Language to SQL conversion system with autonomous multi-agent collaboration powered by AG2 (AutoGen).
+Natural Language to SQL conversion system with autonomous multi-agent collaboration powered by AG2 (AutoGen) and Model Context Protocol (MCP).
 
 ## Features
 
 - 🤖 **Multi-Agent Collaboration**: Three specialized AI agents working together
-  - **SQL Specialist**: Database schema analysis and SQL query generation
+  - **SQL Specialist**: Database schema analysis and SQL query generation via MCP
   - **Web Researcher**: Real-time web search and information gathering
   - **Data Analyst**: Statistical analysis and predictions with code execution
-- 🗣️ **Natural Language Interface**: Query databases using Japanese natural language
+- � **MCP Integration**: Standardized Model Context Protocol for tool communication
+- �🗣️ **Natural Language Interface**: Query databases using Japanese natural language
 - 🚀 **High Performance**: DuckDB for sub-100ms query execution
 - 📊 **Full Observability**: Phoenix (Arize AI) for automatic LLM tracing
 - 💬 **Interactive UI**: Streamlit for intuitive multi-agent conversation
@@ -24,11 +25,16 @@ cd nl2sql-agent
 # Generate sample database
 cd data && pip install -r requirements.txt && python setup_database.py && cd ..
 
-# Start system
-docker compose -f docker-compose-ag2.yml up -d
+# Start all services (Streamlit, Phoenix, Ollama, MCP Server)
+docker compose -f docker-compose-ag2.yml up -d --build
 
-# Download model
+# Download LLM model
 docker exec nl2sql-ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
+
+# Verify services
+curl http://localhost:8080/health  # MCP Server
+curl http://localhost:6006         # Phoenix
+curl http://localhost:8501         # Streamlit
 
 # Access UI at http://localhost:8501
 ```
@@ -36,44 +42,113 @@ docker exec nl2sql-ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
 ## Architecture
 
 ```text
-User Browser → Streamlit UI → MultiAgentOrchestrator → [SQL, Web, Reasoning] Agents
-                                                      ↓
-                                                  MCP Tools
-                                                      ↓
-                                              MCP Server (HTTP)
-                                                      ↓
-                                         [DuckDB, Web, Interpreter]
+┌─────────────┐
+│   Browser   │
+└──────┬──────┘
+       │ HTTP
+       ▼
+┌─────────────────┐
+│  Streamlit UI   │
+│   (Port 8501)   │
+└────────┬────────┘
+         │
+         ▼
+┌────────────────────────────────────┐
+│   MultiAgentOrchestrator (AG2)     │
+│  ┌──────────┬──────────┬─────────┐ │
+│  │SQL Agent │Web Agent │ Reasoning│ │
+│  │          │          │ Agent    │ │
+│  └────┬─────┴──────────┴─────────┘ │
+└───────┼────────────────────────────┘
+        │
+        ▼
+┌────────────────────┐
+│    MCP Tools       │
+│  (HTTP Client)     │
+└─────────┬──────────┘
+          │ HTTP JSON-RPC
+          ▼
+┌─────────────────────┐
+│   MCP Server        │
+│   (FastAPI)         │
+│   Port 8080         │
+└──────────┬──────────┘
+           │
+           ▼
+     ┌─────────┐
+     │ DuckDB  │
+     └─────────┘
+
+[All components traced by Phoenix on Port 6006]
 ```
 
 **詳細**: [docs/architecture.md](docs/architecture.md)
 
-### MCP Integration
+## MCP Integration
 
-This system uses **Model Context Protocol (MCP)** for standardized tool communication:
+This system implements the **Model Context Protocol (MCP)** for standardized tool communication between agents and external systems.
 
-- **MCP Server**: HTTP server (`http://mcp-server:8080`) handles database operations
-- **MCP Tools**: Agents call tools via HTTP JSON-RPC
-- **Fallback**: Direct DuckDB access if MCP unavailable
-- **Benefits**: Standardized interface, better observability, easier testing
+### Architecture Benefits
+
+- ✅ **Standardized Interface**: JSON-RPC protocol for all tool calls
+- ✅ **Separation of Concerns**: Agents focus on reasoning, MCP handles execution
+- ✅ **Better Observability**: All tool calls logged and traceable
+- ✅ **Flexible Deployment**: MCP server can scale independently
+- ✅ **Fallback Support**: Direct DuckDB access if MCP unavailable
+
+### MCP Server
+
+The FastAPI-based MCP server provides:
+
+- **Endpoint**: `http://mcp-server:8080/mcp`
+- **Protocol**: JSON-RPC 2.0
+- **Tools**: Database query execution via `query` tool
+- **Health Check**: `http://mcp-server:8080/health`
+
+Example MCP request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "query",
+    "arguments": {
+      "query": "SELECT COUNT(*) FROM customers"
+    }
+  }
+}
+```
 
 ## Usage Examples
 
 ### Database Query
-```
+
+```text
 User: "2024年で最も売れた商品は？"
-→ SQL Agent analyzes schema → Generates SQL → Returns result
+→ SQL Agent calls get_database_schema() via MCP
+→ Analyzes schema and generates SQL
+→ Calls execute_sql_query() via MCP
+→ Returns formatted result
 ```
 
 ### Web Research
-```
+
+```text
 User: "最新のEコマーストレンドを調査して"
-→ Web Agent searches DuckDuckGo → Scrapes content → Summarizes
+→ Web Agent searches DuckDuckGo
+→ Scrapes relevant content
+→ Summarizes findings
 ```
 
 ### Data Analysis
-```
+
+```text
 User: "明日の売上を予測して"
-→ SQL Agent gets historical data → Reasoning Agent runs analysis → Prediction
+→ SQL Agent retrieves historical data via MCP
+→ Reasoning Agent performs statistical analysis
+→ Returns prediction with confidence interval
 ```
 
 ## Configuration
@@ -103,94 +178,143 @@ temperature=0.0  # 0.0=deterministic, 1.0=creative
 
 ## Troubleshooting
 
+### MCP Server Issues
+
+Check MCP server health:
+
+```bash
+curl http://localhost:8080/health
+docker logs nl2sql-mcp-server --tail 50
+```
+
+Test MCP query directly:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "query",
+      "arguments": {"query": "SELECT COUNT(*) FROM customers"}
+    }
+  }'
+```
+
 ### Agents Not Responding
 
 Check Ollama:
+
 ```bash
 docker logs nl2sql-ollama --tail 50
 docker exec nl2sql-ollama ollama list
 ```
 
 Ensure model is downloaded:
+
 ```bash
 docker exec nl2sql-ollama ollama pull qwen2.5-coder:7b-instruct-q4_K_M
 ```
 
-### Import Errors
+### Environment Variables Not Set
 
-Check pyautogen version:
-```bash
-docker exec nl2sql-streamlit pip show pyautogen
-# Expected: Version: 0.2.35 (not 0.10.0)
-```
+Verify in container:
 
-Rebuild if needed:
 ```bash
-docker compose -f docker-compose-ag2.yml build --no-cache streamlit-ui
+docker exec nl2sql-streamlit env | grep -E "MCP|OLLAMA|DATABASE"
 ```
 
 ### Database Not Found
 
-Generate database:
+Generate sample database:
 
 ```bash
 cd data && python setup_database.py
+```
+
+### Container Restart
+
+Restart all services:
+
+```bash
+docker compose -f docker-compose-ag2.yml down
+docker compose -f docker-compose-ag2.yml up -d --build
 ```
 
 ## Observability
 
 ### Phoenix Tracing
 
-Phoenix automatically traces all LLM calls and agent interactions with zero configuration.
+Phoenix automatically traces all LLM calls, agent interactions, and MCP tool calls with zero configuration.
 
-**Access Phoenix UI**: http://localhost:6006
+**Access**: <http://localhost:6006>
 
 **Features**:
+
 - Automatic instrumentation (no decorators needed)
 - Real-time trace visualization
-- Agent conversation flow
+- Agent conversation flow tracking
 - LLM call details (tokens, latency, costs)
-- Tool execution tracking
+- MCP tool execution tracking with request/response logs
+- Error detection and debugging
 
 **No Setup Required**: Traces appear automatically after executing queries in the Streamlit UI.
+
+### MCP Observability
+
+All MCP tool calls are logged:
+
+```bash
+# View MCP server logs
+docker logs nl2sql-mcp-server -f
+
+# Example output:
+# INFO: 172.18.0.5:43222 - "POST /mcp HTTP/1.1" 200 OK
+```
 
 ## Performance
 
 **Benchmarks** (Apple M4 Max, 128GB RAM):
 
-| Query Type | Agent | Time | Tokens |
-|------------|-------|------|--------|
-| Simple SQL | SQL | 2-5s | ~500 |
-| Web Search | Web | 5-10s | ~800 |
-| Analysis | Multi | 15-30s | ~2000 |
+| Query Type | Agent | Time | Tokens | MCP Overhead |
+|------------|-------|------|--------|--------------|
+| Simple SQL | SQL | 2-5s | ~500 | <100ms |
+| Web Search | Web | 5-10s | ~800 | N/A |
+| Analysis | Multi | 15-30s | ~2000 | <100ms |
 
 **Optimization Tips**:
 
+- MCP server adds minimal latency (<100ms per call)
 - Reduce `max_round` for simple queries
-- Use smaller model (gemma2:2b) for faster responses
-- Limit tool result sizes
+- Use smaller model for faster responses (trade-off: lower accuracy)
+- Limit tool result sizes in MCP server
 - Enable LLM response caching
-
-
 
 ## Project Structure
 
 ```text
 nl2sql-agent/
+├── mcp_server/                   # NEW: MCP Server
+│   ├── server.py                 #   FastAPI JSON-RPC server
+│   ├── requirements.txt          #   MCP server dependencies
+│   └── Dockerfile                #   MCP server container
 ├── function/
-│   ├── ag2_orchestrator.py      # Multi-agent orchestration
-│   ├── database.py               # DuckDB connection
+│   ├── ag2_orchestrator.py       # Multi-agent orchestration
 │   └── mcp_tools/                # MCP tool implementations
-│       ├── database.py           # DB schema/query tools
+│       ├── database.py           # DB tools with MCP HTTP client
 │       ├── web.py                # Search/scrape tools
 │       └── interpreter.py        # Safe Python execution
 ├── ui/
-│   └── app.py                    # Streamlit interface
+│   └── app.py                    # Streamlit interface with Phoenix
 ├── data/
+│   ├── ecommerce.db              # Sample DuckDB database
 │   └── setup_database.py         # Sample data generator
 ├── docs/
 │   └── architecture.md           # Detailed architecture docs
-└── docker-compose-ag2.yml        # Deployment config
+├── docker-compose-ag2.yml        # 4 services: UI, Phoenix, Ollama, MCP
+└── .env.example                  # Environment variables template
 ```
 
 ## License
