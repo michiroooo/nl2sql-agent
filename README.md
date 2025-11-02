@@ -40,10 +40,21 @@ User Browser → Streamlit UI → MultiAgentOrchestrator → [SQL, Web, Reasonin
                                                       ↓
                                                   MCP Tools
                                                       ↓
+                                              MCP Server (HTTP)
+                                                      ↓
                                          [DuckDB, Web, Interpreter]
 ```
 
 **詳細**: [docs/architecture.md](docs/architecture.md)
+
+### MCP Integration
+
+This system uses **Model Context Protocol (MCP)** for standardized tool communication:
+
+- **MCP Server**: HTTP server (`http://mcp-server:8080`) handles database operations
+- **MCP Tools**: Agents call tools via HTTP JSON-RPC
+- **Fallback**: Direct DuckDB access if MCP unavailable
+- **Benefits**: Standardized interface, better observability, easier testing
 
 ## Usage Examples
 
@@ -75,6 +86,8 @@ User: "明日の売上を予測して"
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama endpoint |
 | `DATABASE_PATH` | `/app/data/ecommerce.db` | DuckDB path |
 | `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:6006` | Phoenix collector URL |
+| `MCP_SERVER_URL` | `http://mcp-server:8080/mcp` | MCP server endpoint |
+| `USE_MCP` | `true` | Enable MCP for database operations |
 
 ### Agent Settings
 
