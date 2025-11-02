@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 import agentops
+from agentops.sdk.decorators import agent, operation
 from langchain_community.llms import Ollama
 
 from database import DatabaseManager
+
+logger = logging.getLogger(__name__)
 
 
 SQL_GENERATION_PROMPT = """You are a SQL query generator for a Japanese e-commerce database using DuckDB.
@@ -37,34 +41,63 @@ Examples:
 SQL Query:"""
 
 
+@agent
 class NL2SQLAgent:
-    """Natural Language to SQL conversion agent."""
+    """Natural Language to SQL conversion agent.
+
+    Converts natural language queries to SQL, executes them against DuckDB,
+    and formats results. Integrated with AgentOps for monitoring and tracing.
+    """
 
     def __init__(self) -> None:
+        """Initialize NL2SQL agent with database connection and LLM."""
         self.db_manager = DatabaseManager()
         self.llm = self._initialize_llm()
 
         agentops_key = os.getenv("AGENTOPS_API_KEY")
         if agentops_key:
-            try:
-                agentops.init(api_key=agentops_key)
-            except Exception:
-                pass
+            logger.info("Initializing AgentOps monitoring")
+            agentops.init(
+                api_key=agentops_key,
+                api_endpoint=os.getenv("AGENTOPS_API_ENDPOINT", "https://api.agentops.ai"),
+                default_tags=[" nl2sql", "duckdb"],
+            )
 
     def _initialize_llm(self) -> Ollama:
-        """Initialize Ollama LLM."""
+        """Initialize Ollama LLM.
+
+        Returns:
+            Configured Ollama LLM instance.
+        """
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M")
 
+        logger.info(f"Initializing Ollama LLM: {model} at {base_url}")
         return Ollama(
             base_url=base_url,
             model=model,
             temperature=0.0,
         )
 
+    @operation
     def _generate_sql(self, question: str) -> str:
-        """Generate SQL query from natural language question."""
+        """Generate SQL query from natural language question.
+
+        Args:
+            question: Natural language question in Japanese.
+
+        Returns:
+            Generated SQL query string.
+
+        Raises:
+            ValueError: If generated SQL is empty or invalid.
+        """
+        if not question:
+            raise ValueError("Question cannot be empty")
+
         prompt = SQL_GENERATION_PROMPT.format(question=question)
+        logger.debug(f"Generating SQL for question: {question}")
+
         sql = self.llm.invoke(prompt)
 
         sql = sql.strip()
@@ -73,24 +106,53 @@ class NL2SQLAgent:
         elif "```" in sql:
             sql = sql.split("```")[1].split("```")[0].strip()
 
+        if not sql:
+            raise ValueError("Failed to generate valid SQL")
+
+        logger.info(f"Generated SQL: {sql}")
         return sql
 
+    @operation
     def process_query(self, user_input: str) -> dict[str, Any]:
-        """Process natural language query and return SQL results."""
+        """Process natural language query and return SQL results.
+
+        Args:
+            user_input: Natural language question from user.
+
+        Returns:
+            Dictionary containing:
+                - success: Whether query succeeded
+                - output: Formatted result text
+                - sql: Generated SQL query
+                - data: Raw query results
+                - input: Original user input
+                - error: Error message (only if success=False)
+        """
+        if not user_input:
+            return {
+                "success": False,
+                "error": "User input cannot be empty",
+                "input": user_input,
+            }
+
+        logger.info(f"Processing query: {user_input}")
+
         try:
             sql = self._generate_sql(user_input)
-
             result = self.db_manager.execute_query(sql)
 
             if not result:
+                logger.warning("Query returned no results")
                 return {
                     "success": True,
                     "output": "クエリは成功しましたが、結果はありませんでした。",
                     "sql": sql,
                     "data": [],
+                    "input": user_input,
                 }
 
             output = self._format_result(result)
+            logger.info(f"Query processed successfully, returned {len(result)} rows")
 
             return {
                 "success": True,
@@ -100,14 +162,22 @@ class NL2SQLAgent:
                 "input": user_input,
             }
         except Exception as e:
+            logger.error(f"Query processing failed: {e}", exc_info=True)
             return {
                 "success": False,
                 "error": str(e),
                 "input": user_input,
             }
 
-    def _format_result(self, result: list[dict]) -> str:
-        """Format query result as human-readable text."""
+    def _format_result(self, result: list[dict[str, Any]]) -> str:
+        """Format query result as human-readable text.
+
+        Args:
+            result: List of dictionaries containing query results.
+
+        Returns:
+            Formatted result string in Japanese.
+        """
         if not result:
             return "結果はありませんでした。"
 
@@ -125,26 +195,42 @@ class NL2SQLAgent:
 
         return "\n".join(lines)
 
+    @operation
     def get_schema_info(self) -> dict[str, Any]:
-        """Get database schema information."""
+        """Get database schema information.
+
+        Returns:
+            Dictionary containing:
+                - tables: List of table information dicts with name, columns, row_count
+        """
+        logger.info("Fetching database schema information")
         schema = self.db_manager.get_schema()
 
-        tables = []
+        tables: list[dict[str, Any]] = []
+        current_table: dict[str, Any] | None = None
+
         for line in schema.split("\n"):
             if line.startswith("Table:"):
                 current_table = {"name": line.split(":")[1].strip(), "columns": []}
                 tables.append(current_table)
-            elif line.strip() and ":" in line and tables:
-                col_name, col_type = line.strip().split(":")
-                tables[-1]["columns"].append({
-                    "name": col_name.strip(),
-                    "type": col_type.strip()
-                })
+            elif line.strip() and ":" in line and current_table is not None:
+                parts = line.strip().split(":", 1)
+                if len(parts) == 2:
+                    col_name, col_type = parts
+                    current_table["columns"].append({
+                        "name": col_name.strip(),
+                        "type": col_type.strip(),
+                    })
 
         for table in tables:
-            query = f"SELECT COUNT(*) as count FROM {table['name']}"
-            result = self.db_manager.execute_query(query)
-            table["row_count"] = result[0]["count"] if result else 0
+            try:
+                query = f"SELECT COUNT(*) as count FROM {table['name']}"
+                result = self.db_manager.execute_query(query)
+                table["row_count"] = result[0]["count"] if result else 0
+            except Exception as e:
+                logger.warning(f"Failed to get row count for table {table['name']}: {e}")
+                table["row_count"] = 0
 
+        logger.info(f"Retrieved schema for {len(tables)} tables")
         return {"tables": tables}
 
