@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  # Phoenix Observability (Arize AI)
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: nl2sql-phoenix
+    ports:
+      - "6006:6006"
+      - "4317:4317"  # OTLP gRPC
+    environment:
+      - PHOENIX_WORKING_DIR=/phoenix
+    volumes:
+      - phoenix-data:/phoenix
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  # AG2 Multi-Agent Application
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: nl2sql-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - DATABASE_PATH=/app/data/ecommerce.db
+      - OLLAMA_BASE_URL=http://ollama:11434/v1
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:7b-instruct-q4_K_M}
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      - LANGFUSE_ENABLED=false
+      - MCP_SERVER_URL=http://mcp-server:8080/mcp
+      - USE_MCP=true
+    volumes:
+      - ./data:/app/data
+      - ag2-workspace:/tmp/ag2_workspace
+    depends_on:
+      - ollama
+      - phoenix
+      - mcp-server
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: nl2sql-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+  # MCP Server for database operations
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile
+    container_name: nl2sql-mcp-server
+    ports:
+      - "8080:8080"
+    environment:
+      - MCP_DB_PATH=/app/data/ecommerce.db
+      - MCP_READ_ONLY=true
+    volumes:
+      - ./data:/app/data
+    networks:
+      - nl2sql-network
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  phoenix-data:
+  ag2-workspace:
+
+networks:
+  nl2sql-network:
+    driver: bridge

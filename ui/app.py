@@ -1,4 +1,4 @@
-"""Streamlit UI for NL2SQL Agent."""
+"""Streamlit UI for AG2 Multi-Agent System."""
 
 from __future__ import annotations
 
@@ -7,30 +7,40 @@ import sys
 from pathlib import Path
 
 import streamlit as st
+from phoenix.otel import register
+from openinference.instrumentation.openai import OpenAIInstrumentor
+
+# Initialize Phoenix tracing
+tracer_provider = register(
+    project_name="ag2-multi-agent",
+    endpoint=os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:6006"),
+)
+OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
 
 sys.path.append(str(Path(__file__).parent.parent / "function"))
 
-use_react = os.getenv("MCP_ENABLED", "false").lower() == "true"
-
-if use_react:
-    from agent_react import NL2SQLAgent
-else:
-    from agent import NL2SQLAgent
+from ag2_orchestrator import MultiAgentOrchestrator
 
 st.set_page_config(
-    page_title="NL2SQL Agent",
-    page_icon="🔍",
+    page_title="AG2 Multi-Agent System",
+    page_icon="🤖",
     layout="wide",
 )
 
-st.title("🔍 NL2SQL Database Query Agent")
-st.markdown("自然言語でデータベースに質問してください")
+st.title("🤖 AG2 Multi-Agent System")
+st.markdown("複数のエージェントが協力してタスクを解決します")
 
 
 @st.cache_resource
-def get_agent():
-    """Initialize and cache the agent."""
-    return NL2SQLAgent()
+def get_orchestrator() -> MultiAgentOrchestrator:
+    """Initialize and cache orchestrator instance.
+
+    Returns:
+        Configured MultiAgentOrchestrator instance.
+    """
+    return MultiAgentOrchestrator(
+        work_dir=Path("/tmp/ag2_workspace"),
+    )
 
 
 if "messages" not in st.session_state:
@@ -46,48 +56,84 @@ if prompt := st.chat_input("質問を入力してください（例：顧客数�
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("処理中..."):
-            agent = get_agent()
-            result = agent.process_query(prompt)
+        with st.spinner("エージェントが協議中..."):
+            orchestrator = get_orchestrator()
+            result = orchestrator.execute(prompt)
 
             if result["success"]:
                 response = result["output"]
                 st.markdown(response)
 
-                if use_react and "intermediate_steps" in result:
-                    with st.expander("🤖 エージェントの思考過程"):
-                        for i, (action, observation) in enumerate(result["intermediate_steps"]):
-                            st.markdown(f"**Step {i+1}:**")
-                            st.markdown(f"- Action: `{action.tool}`")
-                            st.markdown(f"- Input: `{action.tool_input}`")
-                            st.markdown(f"- Observation: {observation[:200]}...")
-                            st.divider()
-                elif "sql" in result:
-                    with st.expander("📊 実行された SQL"):
-                        st.code(result.get("sql", ""), language="sql")
+                with st.expander("�️ エージェント会話履歴"):
+                    for msg in result.get("conversation", []):
+                        agent_name = msg.get("name", "unknown")
+                        content = msg.get("content", "")
 
-                if "data" in result and result["data"]:
-                    with st.expander("📈 データ詳細"):
-                        st.dataframe(result["data"])
+                        if agent_name != "user":
+                            st.markdown(f"**{agent_name}**:")
+                            st.text(content[:500] + ("..." if len(content) > 500 else ""))
+                            st.divider()
+
+                with st.expander("� 参加エージェント"):
+                    agents = result.get("agents_involved", [])
+                    st.write(", ".join(agents))
             else:
-                st.error(f"エラー: {result['error']}")
-                response = f"申し訳ございません。エラーが発生しました: {result['error']}"
+                st.error(f"エラー: {result.get('error')}")
+                response = f"申し訳ございません。エラーが発生しました: {result.get('error')}"
 
     st.session_state.messages.append({"role": "assistant", "content": response})
 
 with st.sidebar:
-    st.header("📋 データベース情報")
+    st.header("🤖 システム情報")
 
-    agent = get_agent()
-    schema_info = agent.get_schema_info()
+    st.subheader("利用可能なエージェント")
+    st.write("**SQL Specialist** 🗄️")
+    st.caption("データベースクエリの専門家")
 
-    for table in schema_info.get("tables", []):
-        with st.expander(f"📊 {table['name']}"):
-            st.markdown(f"**レコード数**: {table.get('row_count', 'N/A')}")
-            st.markdown("**カラム**:")
-            for col in table.get("columns", []):
-                st.text(f"  • {col['name']} ({col['type']})")
+    st.write("**Web Researcher** 🌐")
+    st.caption("Web情報収集の専門家")
 
-    if st.button("🔄 会話履歴をクリア"):
+    st.write("**Data Analyst** 📊")
+    st.caption("分析・予測の専門家")
+
+    st.divider()
+
+    st.subheader("サンプルクエリ")
+
+    samples = [
+        "顧客数を教えて",
+        "2024年で最も売れた商品は？",
+        "最新のEコマーストレンドは？",
+        "明日の売上を予測して",
+    ]
+
+    for sample in samples:
+        if st.button(sample, key=sample, use_container_width=True):
+            st.session_state.sample_query = sample
+            st.rerun()
+
+    st.divider()
+
+    st.divider()
+
+    if st.button("🔄 会話履歴をクリア", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+
+if "sample_query" in st.session_state:
+    sample = st.session_state.sample_query
+    del st.session_state.sample_query
+    st.session_state.messages.append({"role": "user", "content": sample})
+
+    with st.chat_message("assistant"):
+        with st.spinner("エージェントが協議中..."):
+            orchestrator = get_orchestrator()
+            result = orchestrator.execute(sample)
+
+            if result["success"]:
+                st.markdown(result["output"])
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": result["output"]
+                })
