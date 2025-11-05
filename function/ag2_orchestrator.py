@@ -248,21 +248,44 @@ class MultiAgentOrchestrator:
         logger.info(f"Executing query: {query}")
 
         try:
-            self.group_chat.messages = []
+            # Clear previous group chat messages
+            self.group_chat.messages.clear()
 
             self.user_proxy.initiate_chat(
                 self.manager,
                 message=query,
             )
 
-            conversation = self.group_chat.messages
-            final_message = conversation[-1]["content"] if conversation else ""
+            # Extract conversation from manager's chat history
+            # Manager stores messages with all agents, find user agent conversation
+            conversation = []
+            if hasattr(self.manager, 'chat_messages'):
+                for agent, messages in self.manager.chat_messages.items():
+                    if hasattr(agent, 'name') and agent.name == "user":
+                        conversation = messages
+                        break
+
+            # Extract final meaningful message (skip empty and user messages)
+            final_message = ""
+            for msg in reversed(conversation):
+                content = msg.get("content", "").strip()
+                name = msg.get("name", "")
+                if content and name not in ["user", "chat_manager", ""]:
+                    final_message = content
+                    break
+
+            # Get unique agents (excluding system agents)
+            agents = list(set(
+                msg.get("name", "")
+                for msg in conversation
+                if msg.get("name") not in ["user", "chat_manager", ""]
+            ))
 
             return {
                 "success": True,
                 "output": final_message,
                 "conversation": conversation,
-                "agents_involved": list(set(msg.get("name", "") for msg in conversation)),
+                "agents_involved": agents,
             }
 
         except Exception as e:
@@ -272,8 +295,6 @@ class MultiAgentOrchestrator:
                 "output": "",
                 "error": str(e),
             }
-
-
 def main() -> None:
     """Run example multi-agent scenario."""
     orchestrator = MultiAgentOrchestrator()
