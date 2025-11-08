@@ -8,8 +8,8 @@ Natural Language to SQL conversion system with autonomous multi-agent collaborat
   - **SQL Specialist**: Database schema analysis and SQL query generation via MCP
   - **Web Researcher**: Real-time web search and information gathering
   - **Data Analyst**: Statistical analysis and predictions with code execution
-- � **MCP Integration**: Standardized Model Context Protocol for tool communication
-- �🗣️ **Natural Language Interface**: Query databases using Japanese natural language
+- 🔧 **MCP Integration**: Standardized Model Context Protocol for tool communication
+- 🗣️ **Natural Language Interface**: Query databases using Japanese natural language
 - 🚀 **High Performance**: DuckDB for sub-100ms query execution
 - 📊 **Full Observability**: Phoenix (Arize AI) for automatic LLM tracing
 - 💬 **Interactive UI**: Streamlit for intuitive multi-agent conversation

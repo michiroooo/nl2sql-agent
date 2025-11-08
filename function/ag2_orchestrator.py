@@ -295,6 +295,8 @@ class MultiAgentOrchestrator:
                 "output": "",
                 "error": str(e),
             }
+
+
 def main() -> None:
     """Run example multi-agent scenario."""
     orchestrator = MultiAgentOrchestrator()
