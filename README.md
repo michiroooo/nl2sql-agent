@@ -160,7 +160,7 @@ User: "明日の売上を予測して"
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b-instruct-q4_K_M` | LLM model |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama endpoint (Docker) / `http://localhost:11434` (local) |
 | `DATABASE_PATH` | `/app/data/ecommerce.db` | DuckDB path |
-| `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:4317` | Phoenix OTLP gRPC endpoint (use `http://phoenix:4317` in Docker) |
+| `PHOENIX_COLLECTOR_ENDPOINT` | `http://phoenix:4317` | Phoenix OTLP gRPC endpoint (use `http://localhost:4317` for local development) |
 | `MCP_SERVER_URL` | `http://mcp-server:8080/mcp` | MCP server endpoint |
 | `USE_MCP` | `true` | Enable MCP for database operations |
 

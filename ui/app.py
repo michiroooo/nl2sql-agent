@@ -14,16 +14,19 @@ sys.path.append(str(Path(__file__).parent.parent / "function"))
 
 from ag2_orchestrator import MultiAgentOrchestrator
 
-# Initialize Phoenix tracing only once
-if "tracer_initialized" not in st.session_state:
-    phoenix_endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:4317")
-
+# Initialize Phoenix tracing only once, or if endpoint changes
+phoenix_endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:4317")
+if (
+    "tracer_initialized" not in st.session_state
+    or st.session_state.get("phoenix_endpoint") != phoenix_endpoint
+):
     tracer_provider = register(
         project_name="ag2-multi-agent",
         endpoint=phoenix_endpoint,
     )
     OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
     st.session_state.tracer_initialized = True
+    st.session_state.phoenix_endpoint = phoenix_endpoint
 
 st.set_page_config(
     page_title="AG2 Multi-Agent System",
