@@ -151,4 +151,3 @@ if "sample_query" in st.session_state:
                     "role": "assistant",
                     "content": f"エラーが発生しました: {error_msg}"
                 })
-
