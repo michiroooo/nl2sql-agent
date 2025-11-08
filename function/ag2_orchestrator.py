@@ -248,21 +248,63 @@ class MultiAgentOrchestrator:
         logger.info(f"Executing query: {query}")
 
         try:
-            self.group_chat.messages = []
+            # Clear previous group chat messages
+            self.group_chat.messages.clear()
 
             self.user_proxy.initiate_chat(
                 self.manager,
                 message=query,
             )
 
-            conversation = self.group_chat.messages
-            final_message = conversation[-1]["content"] if conversation else ""
+            # Extract conversation from manager's chat history
+            # Manager stores messages with all agents, find user agent conversation
+            conversation = []
+            chat_messages = getattr(self.manager, 'chat_messages', None)
+            if isinstance(chat_messages, dict):
+                found_user_agent = False
+                for agent, messages in chat_messages.items():
+                    if agent is not None and hasattr(agent, 'name') and getattr(agent, 'name', None) == "user":
+                        if isinstance(messages, list):
+                            conversation = messages
+                        else:
+                            logger.warning("Messages for user agent are not a list.")
+                        found_user_agent = True
+                        break
+                if not found_user_agent:
+                    logger.warning("User agent not found in chat_messages. Using all messages as fallback.")
+                    # Fallback: concatenate all messages from all agents
+                    for msgs in chat_messages.values():
+                        if isinstance(msgs, list):
+                            conversation.extend(msgs)
+            else:
+                logger.error("manager.chat_messages is not a dictionary. Cannot extract conversation.")
+
+            # Extract final meaningful message (skip empty and user messages)
+            final_message = ""
+            for msg in reversed(conversation):
+                content = msg.get("content", "").strip()
+                name = msg.get("name", "")
+                if content and name not in ["user", "chat_manager", ""]:
+                    final_message = content
+                    break
+
+            # Ensure final_message is not empty
+            if not final_message:
+                logger.warning("No meaningful response generated. Conversation may have failed or no agent output.")
+                final_message = "申し訳ございません。回答を生成できませんでした。"
+
+            # Get unique agents (excluding system agents)
+            agents = list(set(
+                msg.get("name", "")
+                for msg in conversation
+                if msg.get("name") not in ["user", "chat_manager", ""]
+            ))
 
             return {
                 "success": True,
                 "output": final_message,
                 "conversation": conversation,
-                "agents_involved": list(set(msg.get("name", "") for msg in conversation)),
+                "agents_involved": agents,
             }
 
         except Exception as e:

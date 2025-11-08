@@ -28,7 +28,7 @@ services:
       - DATABASE_PATH=/app/data/ecommerce.db
       - OLLAMA_BASE_URL=http://ollama:11434/v1
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:7b-instruct-q4_K_M}
-      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
       - LANGFUSE_ENABLED=false
       - MCP_SERVER_URL=http://mcp-server:8080/mcp
       - USE_MCP=true
