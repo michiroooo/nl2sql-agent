@@ -14,6 +14,11 @@ from typing import Any
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 from autogen.coding import LocalCommandLineCodeExecutor
 
+from function.core.config import AppConfig
+from function.core.logging import StructuredLogger
+from function.core.errors import AgentExecutionError
+from function.tools.registry import ToolRegistry
+from function.agents.factory import AgentFactory
 from mcp_tools.database import create_database_tools
 from mcp_tools.web import create_web_tools
 from mcp_tools.interpreter import create_interpreter_tool
@@ -184,21 +189,35 @@ Always explain your reasoning and methodology.""",
 
 
 class MultiAgentOrchestrator:
-    """Orchestrates multi-agent collaboration using AG2 GroupChat."""
+    """Orchestrates multi-agent collaboration using AG2 GroupChat with optional DI."""
 
     def __init__(
         self,
         model: str | None = None,
         base_url: str | None = None,
         work_dir: Path | None = None,
+        tool_registry: ToolRegistry | None = None,
+        agent_factory: AgentFactory | None = None,
+        app_config: AppConfig | None = None,
+        logger: StructuredLogger | None = None,
     ) -> None:
         """Initialize orchestrator with specialized agents.
 
         Args:
-            model: LLM model name.
-            base_url: Ollama API endpoint.
+            model: LLM model name (ignored if app_config provided).
+            base_url: Ollama API endpoint (ignored if app_config provided).
             work_dir: Working directory for code execution.
+            tool_registry: Optional tool registry for DI pattern.
+            agent_factory: Optional agent factory for DI pattern.
+            app_config: Optional application configuration for DI pattern.
+            logger: Optional structured logger for DI pattern.
         """
+        # Store DI dependencies if provided
+        self.tool_registry = tool_registry
+        self.agent_factory = agent_factory
+        self.app_config = app_config
+        self.structured_logger = logger
+
         config = AgentConfig(model, base_url)
         work_dir = work_dir or Path("/tmp/ag2_workspace")
 
