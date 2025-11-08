@@ -158,9 +158,9 @@ User: "明日の売上を予測して"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_MODEL` | `qwen2.5-coder:7b-instruct-q4_K_M` | LLM model |
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama endpoint |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama endpoint (Docker) / `http://localhost:11434` (local) |
 | `DATABASE_PATH` | `/app/data/ecommerce.db` | DuckDB path |
-| `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:6006` | Phoenix collector URL |
+| `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:4317` | Phoenix OTLP gRPC endpoint (use `http://phoenix:4317` in Docker) |
 | `MCP_SERVER_URL` | `http://mcp-server:8080/mcp` | MCP server endpoint |
 | `USE_MCP` | `true` | Enable MCP for database operations |
 
@@ -317,6 +317,28 @@ nl2sql-agent/
 └── .env.example                  # Environment variables template
 ```
 
+## Future Improvements & Known Limitations
+
+### Planned Enhancements
+
+- **BatchSpanProcessor**: Implement batch processing for Phoenix traces (currently using simple span processor)
+  - Reduces network overhead in high-load scenarios
+  - Better performance for production deployments
+
+- **AG2 Message Retrieval Patterns**: Document AG2's `chat_messages` vs `group_chat.messages` behavior
+  - Current implementation uses `manager.chat_messages[agent]` for reliable message extraction
+  - May need updates with future AG2 releases
+
+- **Cleanup Tasks**:
+  - Remove debug scripts (`debug_messages.py`, `debug_all_messages.py`, `test_groupchat.py`) before production deployment
+  - These are useful for development/troubleshooting only
+
+### Performance Considerations
+
+- **Model Selection**: Qwen 2.5 Coder 7B offers good balance; consider larger models for complex queries
+- **MCP Latency**: HTTP JSON-RPC adds ~50-100ms per tool call (acceptable for most use cases)
+- **DuckDB Performance**: Suitable for datasets <10GB; consider PostgreSQL for larger scale
+
 ## License
 
 MIT License
@@ -327,3 +349,4 @@ MIT License
 - [DuckDB Documentation](https://duckdb.org/docs/)
 - [Phoenix (Arize AI) Documentation](https://docs.arize.com/phoenix)
 - [Streamlit Documentation](https://docs.streamlit.io/)
+- [Model Context Protocol](https://modelcontextprotocol.io)

@@ -16,7 +16,7 @@ from ag2_orchestrator import MultiAgentOrchestrator
 
 # Initialize Phoenix tracing only once
 if "tracer_initialized" not in st.session_state:
-    phoenix_endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://phoenix:4317")
+    phoenix_endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:4317")
 
     tracer_provider = register(
         project_name="ag2-multi-agent",
